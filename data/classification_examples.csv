@@ -1,0 +1,10 @@
+id,text,label
+cls_001,"The model returns Python code, but the function fails on empty lists.",bug
+cls_002,"How can I stream tokens from a local Ollama model in Python?",how-to
+cls_003,"Why do larger context windows usually increase memory pressure?",concept
+cls_004,"Our embedding job takes 40 minutes. Which batching knobs should we try first?",performance
+cls_005,"A student accidentally committed an API key to GitHub. What should they do?",security
+cls_006,"The RAG answer cites an unrelated document even though the corpus is tiny.",bug
+cls_007,"What does temperature change in an LLM request?",concept
+cls_008,"How do I estimate dollars per thousand tokens for a summarization job?",how-to
+

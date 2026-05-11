@@ -1,0 +1,3 @@
+Combined local folder joining the Qwen-family A100 run and the mixed-family A100 run. CPU energy is TDP-estimated where RAPL was unavailable; GPU energy is NVML-measured. In CPU-profile rows, GPU energy reflects the attached A100's idle draw rather than inference work.
+
+Paper-style net energy views are generated in `figures/metrics_with_energy_views.csv` and `figures/summary_by_workload_model.csv`: `net_gpu_energy_j = gpu_energy_j - gpu_idle_power_w_used * elapsed_s`, clipped at zero. `active_device_energy_j` uses the CPU TDP estimate for CPU rows and net GPU energy for GPU rows. The original `total_energy_j` remains the raw wall-style estimate: CPU estimate plus attached GPU NVML draw.

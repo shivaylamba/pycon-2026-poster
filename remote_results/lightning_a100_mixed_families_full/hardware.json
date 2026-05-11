@@ -1,0 +1,15 @@
+{
+  "platform": "Linux-6.8.0-60-generic-x86_64-with-glibc2.39",
+  "processor": "x86_64",
+  "python": "3.12.3",
+  "cpu_count_logical": 30,
+  "cpu_count_physical": 30,
+  "memory_gb": 216.26,
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memory_gb": 40.0
+    }
+  ]
+}

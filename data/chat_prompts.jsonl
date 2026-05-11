@@ -1,0 +1,6 @@
+{"id":"chat_001","messages":[{"role":"user","content":"I have a pandas DataFrame with timestamps and prices. How do I resample it to hourly means and plot the result?"}]}
+{"id":"chat_002","messages":[{"role":"user","content":"Explain the difference between a Python list comprehension and a generator expression with one practical example."}]}
+{"id":"chat_003","messages":[{"role":"user","content":"My FastAPI endpoint feels slow after adding an LLM call. What should I measure first?"}]}
+{"id":"chat_004","messages":[{"role":"user","content":"Write a short checklist for safely using an API key in a classroom notebook."}]}
+{"id":"chat_005","messages":[{"role":"user","content":"I need to process 20,000 short support tickets with an LLM. Should I send them one at a time or batch them?"}]}
+

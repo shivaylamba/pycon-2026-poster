@@ -1,0 +1,88 @@
+run_id: pycon_mock_smoke
+data_dir: ../data
+repeats: 2
+workloads:
+  - chat
+  - summarization
+  - classification
+  - rag_rank
+  - batch_embeddings
+
+costs:
+  electricity_usd_per_kwh: 0.18
+  hardware_usd_per_request: 0.0
+
+default_options:
+  temperature: 0.1
+  num_predict: 128
+  mock_max_sleep_s: 0.02
+
+providers:
+  mock_local:
+    type: mock
+    seed: 42
+
+hardware_profiles:
+  cpu:
+    enabled: true
+    label: CPU profile
+    cpu_tdp_watts: 45
+    provider_options:
+      mock:
+        mock_speedup: 1.0
+  gpu:
+    enabled: true
+    label: GPU profile
+    cpu_tdp_watts: 45
+    provider_options:
+      mock:
+        mock_speedup: 4.0
+
+generation_models:
+  - name: mock-small-1b
+    label: Small 1B
+    provider: mock_local
+    family: mock
+    size: 1B
+    pricing:
+      input_usd_per_1m_tokens: 0.03
+      output_usd_per_1m_tokens: 0.06
+  - name: mock-medium-3b
+    label: Medium 3B
+    provider: mock_local
+    family: mock
+    size: 3B
+    pricing:
+      input_usd_per_1m_tokens: 0.08
+      output_usd_per_1m_tokens: 0.16
+  - name: mock-large-7b
+    label: Large 7B
+    provider: mock_local
+    family: mock
+    size: 7B
+    pricing:
+      input_usd_per_1m_tokens: 0.20
+      output_usd_per_1m_tokens: 0.40
+
+embedding_models:
+  - name: mock-embed-small
+    label: Embed small
+    provider: mock_local
+    family: mock
+    size: small
+    pricing:
+      embedding_usd_per_1m_tokens: 0.02
+  - name: mock-embed-large
+    label: Embed large
+    provider: mock_local
+    family: mock
+    size: large
+    pricing:
+      embedding_usd_per_1m_tokens: 0.08
+
+workload_options:
+  batch_embeddings:
+    batch_size: 4
+  rag_rank:
+    top_k: 3
+

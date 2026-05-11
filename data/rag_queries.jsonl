@@ -1,0 +1,5 @@
+{"id":"rag_001","query":"How should I explain CPU and GPU energy measurement on the poster?","expected_doc_id":"doc_energy"}
+{"id":"rag_002","query":"Why can batching make embedding jobs cheaper or faster?","expected_doc_id":"doc_batching"}
+{"id":"rag_003","query":"Which latency buckets should a Python developer inspect for an LLM call?","expected_doc_id":"doc_latency"}
+{"id":"rag_004","query":"For a short classification task, what usually dominates the request?","expected_doc_id":"doc_classification"}
+

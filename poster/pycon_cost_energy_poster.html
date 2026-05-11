@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cost &amp; Energy of Everyday LLM Workloads</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #ffffff;
+      --ink: #1a1a2e;
+      --heading: #0f1b35;
+      --body: #2c3e50;
+      --muted: #6c7a89;
+      --line: #d1d5db;
+      --panel: #f8f9fa;
+      --panel-blue: #eef4fb;
+      --python-blue: #1b3a5c;
+      --python-yellow: #f3c53c;
+      --green: #1a7a3a;
+      --orange: #d97706;
+      --red: #c0392b;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --display: "Inter", system-ui, sans-serif;
+      --text: "Inter", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #e5e7eb;
+      color: var(--body);
+      font-family: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .poster {
+      width: min(100vw - 16px, calc((100vh - 16px) * 84.1 / 59.4), 1580px);
+      aspect-ratio: 84.1 / 59.4;
+      margin: 8px auto;
+      background: var(--paper);
+      box-shadow: 0 4px 20px rgba(0,0,0,.12);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    @page { size: 84.1cm 59.4cm landscape; margin: 0; }
+
+    @media print {
+      body { background: #fff; margin: 0; padding: 0; }
+      .poster {
+        width: 84.1cm;
+        height: 59.4cm;
+        margin: 0;
+        box-shadow: none;
+        aspect-ratio: auto;
+      }
+      .poster * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: .87em;
+      background: #f0f0f0;
+      padding: 1px 4px;
+      border-radius: 2px;
+      color: var(--ink);
+    }
+
+    .header {
+      background: #1a2744;
+      color: var(--paper);
+      display: grid;
+      grid-template-columns: 260px 1fr 260px;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 24px;
+      border-bottom: none;
+    }
+
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .py-mark {
+      width: 44px;
+      height: 44px;
+      border: 1px solid rgba(255,255,255,.45);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,.15);
+    }
+
+    .py-mark span { display: none; }
+    .py-mark::after {
+      content: "Py";
+      font-weight: 800;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    .conference {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1.25;
+      letter-spacing: .01em;
+    }
+
+    .conference small {
+      display: block;
+      font-family: var(--text);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      opacity: .76;
+      margin-top: 5px;
+    }
+
+    .title-block { text-align: center; min-width: 0; }
+
+    h1 {
+      font-family: var(--display);
+      font-size: clamp(17px, 1.7vw, 25px);
+      line-height: 1.18;
+      letter-spacing: -.01em;
+      color: var(--paper);
+      font-weight: 800;
+    }
+
+    .subtitle {
+      margin-top: 8px;
+      color: rgba(255,255,255,.86);
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+
+    .authors {
+      margin-top: 9px;
+      font-size: 10.5px;
+      font-weight: 600;
+    }
+
+    .right-kicker {
+      justify-self: end;
+      width: 220px;
+      min-height: 50px;
+      border: none;
+      padding: 8px 10px;
+      border-radius: 4px;
+      background: rgba(255,255,255,.15);
+    }
+
+    .right-kicker .label {
+      font-family: var(--mono);
+      color: rgba(255,255,255,.92);
+      text-transform: uppercase;
+      font-size: 8px;
+      letter-spacing: .12em;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .right-kicker p {
+      font-size: 10px;
+      line-height: 1.34;
+      color: rgba(255,255,255,.78);
+    }
+
+    .body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: .96fr 1.28fr .96fr;
+      gap: 0;
+      min-height: 0;
+    }
+
+    .col {
+      padding: 12px 16px 10px;
+      border-right: 1.5px solid var(--line);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .col:last-child { border-right: none; }
+    .section { margin-bottom: 8px; }
+    .section:last-child { margin-bottom: 0; }
+
+    .section-title {
+      font-family: var(--display);
+      font-size: 12px;
+      line-height: 1;
+      color: var(--python-blue);
+      text-transform: uppercase;
+      font-weight: 800;
+      letter-spacing: .055em;
+      border-bottom: 2px solid var(--python-blue);
+      padding-bottom: 5px;
+      margin-bottom: 7px;
+    }
+
+    .section-title.yellow {
+      color: var(--python-blue);
+      border-bottom-color: var(--python-blue);
+    }
+
+    h2, h3 {
+      font-family: var(--display);
+      color: var(--heading);
+      letter-spacing: -.01em;
+    }
+
+    h3 {
+      font-size: 12px;
+      font-weight: 800;
+      margin: 8px 0 4px;
+    }
+
+    p, li {
+      font-size: 10.2px;
+      line-height: 1.42;
+    }
+
+    p + p { margin-top: 5px; }
+    ul, ol { padding-left: 15px; margin: 4px 0 7px; }
+    li { margin-bottom: 3px; }
+    strong { color: var(--ink); font-weight: 700; }
+
+    .abstract {
+      background: var(--panel);
+      border: 1.5px solid var(--line);
+      border-radius: 4px;
+      padding: 8px 10px;
+      color: var(--body);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin-top: 7px;
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 4px;
+      padding: 7px 5px;
+      min-height: 45px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .flow-step b {
+      font-family: var(--display);
+      color: var(--ink);
+      font-size: 10px;
+      line-height: 1.05;
+    }
+
+    .flow-step span {
+      font-size: 7.6px;
+      line-height: 1.25;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin: 6px 0;
+    }
+
+    .metric {
+      background: var(--panel);
+      color: var(--body);
+      border: 1.5px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 9px;
+      min-height: 58px;
+    }
+
+    .metric .num {
+      font-family: var(--display);
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 800;
+      color: var(--python-blue);
+    }
+
+    .metric .caption {
+      font-size: 8.4px;
+      line-height: 1.25;
+      margin-top: 5px;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6px 0;
+      font-size: 8.7px;
+      background: var(--paper);
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 4px 5px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    th {
+      background: var(--panel);
+      color: var(--heading);
+      font-family: var(--display);
+      font-weight: 800;
+      font-size: 8.5px;
+    }
+
+    td:first-child, th:first-child { text-align: left; }
+    .best { color: var(--green); font-weight: 800; }
+    .warn { color: var(--red); font-weight: 800; }
+    .dim { color: var(--muted); }
+
+    .figure {
+      border: 1.5px solid var(--line);
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--paper);
+      margin-bottom: 7px;
+    }
+
+    .fig-caption {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 6px 9px;
+      font-family: var(--display);
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .fig-caption span {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 7.4px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .figure img {
+      width: 100%;
+      display: block;
+      background: white;
+    }
+
+    .figure.compact img { max-height: 158px; object-fit: contain; }
+    .figure.medium img { max-height: 188px; object-fit: contain; }
+    .figure.tall img { max-height: 226px; object-fit: contain; }
+
+    .note {
+      font-size: 8.4px;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
+    .command {
+      background: var(--panel);
+      color: var(--body);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 9px;
+      font-family: var(--mono);
+      font-size: 8.2px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      margin-top: 5px;
+    }
+
+    .command .comment { color: var(--muted); }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin: 6px 0;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 4px 8px;
+      background: #fff7d8;
+      font-family: var(--mono);
+      color: var(--ink);
+      font-size: 7.4px;
+      font-weight: 600;
+    }
+
+    .workload-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      margin-top: 7px;
+    }
+
+    .workload {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 4px;
+      padding: 6px 5px;
+      min-height: 42px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8.4px;
+      line-height: 1.18;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .latency-chips {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .latency-chip {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 6px 6px;
+      background: #fff;
+      min-height: 47px;
+    }
+
+    .latency-chip b {
+      display: block;
+      font-size: 9.2px;
+      line-height: 1.1;
+      color: var(--ink);
+      margin-bottom: 3px;
+    }
+
+    .latency-chip span {
+      display: block;
+      font-size: 7.8px;
+      line-height: 1.22;
+      color: var(--muted);
+    }
+
+    .compact-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .compact-list div {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 8.8px;
+      line-height: 1.28;
+    }
+
+    .rules {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    .rules.two-col {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5px;
+    }
+
+    .rule {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--panel);
+      padding: 6px 8px;
+    }
+
+    .rules.two-col .rule { padding: 5px 7px; }
+
+    .rule b {
+      display: block;
+      color: var(--ink);
+      font-family: var(--display);
+      font-size: 10.5px;
+      margin-bottom: 2px;
+    }
+
+    .rule p {
+      font-size: 8.7px;
+      line-height: 1.28;
+    }
+
+    .qr {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-top: 5px;
+      border: 1.5px solid var(--ink);
+      border-radius: 4px;
+      padding: 6px;
+      background: var(--panel);
+    }
+
+    .qr-box {
+      width: 52px;
+      height: 52px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, var(--heading) 8px, transparent 8px 16px, var(--heading) 16px 24px, transparent 24px),
+        linear-gradient(0deg, transparent 8px, var(--heading) 8px 16px, transparent 16px 24px, var(--heading) 24px 32px, transparent 32px);
+      background-size: 24px 24px;
+    }
+
+    .qr p { font-size: 8.5px; line-height: 1.25; }
+
+    .footer {
+      border-top: 1.5px solid var(--line);
+      background: var(--paper);
+      padding: 5px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 8.4px;
+      line-height: 1.32;
+    }
+
+    .footer strong { color: var(--ink); }
+    .footer a { color: var(--python-blue); text-decoration: none; font-weight: 700; }
+
+    .bottom-bar {
+      background: var(--heading);
+      color: #8899aa;
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 20px;
+      font-size: 8px;
+      font-family: var(--mono);
+    }
+  </style>
+</head>
+<body>
+<main class="poster" contenteditable="false">
+
+  <header class="header">
+    <div class="badge">
+      <div class="py-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <div class="conference">
+        PyCon US
+        <small>Poster Session</small>
+      </div>
+    </div>
+
+    <div class="title-block">
+      <h1>Cost &amp; Energy of Everyday LLM Workloads</h1>
+      <div class="subtitle">A visual field guide for Python developers</div>
+      <div class="authors">Shivay Lamba &nbsp;&nbsp; Suvrakamal Das</div>
+    </div>
+
+    <div class="right-kicker">
+      <div class="label">Reproducible benchmark</div>
+      <p>Python scripts + notebooks profile local LLM workloads on CPU and NVIDIA A100; attendees can plug in their own endpoints and regenerate every figure.</p>
+    </div>
+  </header>
+
+  <section class="body">
+    <div class="col">
+      <div class="section">
+        <div class="section-title">1. What We Measure</div>
+        <div class="abstract">
+          <p>
+            Generative AI is everywhere, but the real cost and energy impact of everyday LLM calls is usually buried in dashboards and invoices. This poster turns those hidden numbers into clear visuals that Python developers can inspect at a glance.
+          </p>
+          <p>
+            Built for students, educators, and practitioners who want crisp intuition for <strong>what this call really costs</strong>, with scripts and notebooks they can rerun on their own endpoints.
+          </p>
+        </div>
+        <div class="workload-grid">
+          <div class="workload">Chat completions</div>
+          <div class="workload">Document summarization</div>
+          <div class="workload">Classification</div>
+          <div class="workload">RAG queries</div>
+          <div class="workload">Batch embeddings</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title yellow">2. Reproducible Pipeline</div>
+        <p>Each workload produces a row-level <code>metrics.csv</code>, response log, summary CSV, and poster-ready waterfall, cost, and energy figures.</p>
+        <div class="flow">
+          <div class="flow-step"><b>Fixtures</b><span>prompts, docs, labels, corpus</span></div>
+          <div class="flow-step"><b>Client</b><span>Ollama / API adapter</span></div>
+          <div class="flow-step"><b>Timers</b><span>network, tokenize, infer, post</span></div>
+          <div class="flow-step"><b>Energy</b><span>NVML + CPU estimate</span></div>
+          <div class="flow-step"><b>Plots</b><span>waterfalls, cost, energy</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Latency Waterfall Slices</h3>
+        <div class="latency-chips">
+          <div class="latency-chip"><b>Network</b><span>client call overhead and endpoint placement</span></div>
+          <div class="latency-chip"><b>Tokenization</b><span>prompt processing / prefill for long inputs</span></div>
+          <div class="latency-chip"><b>Inference</b><span>model generation, usually model-size driven</span></div>
+          <div class="latency-chip"><b>Post-process</b><span>parse labels, rank results, serialize outputs</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Models Tried</h3>
+        <div class="pill-row">
+          <span class="pill">qwen3.5:0.8b</span>
+          <span class="pill">qwen3.5:4b</span>
+          <span class="pill">qwen3.5:9b</span>
+          <span class="pill">llama3.2:3b</span>
+          <span class="pill">gemma3:4b</span>
+          <span class="pill">mistral-small3.2:24b</span>
+          <span class="pill">qwen3-embedding</span>
+          <span class="pill">nomic-embed-text</span>
+          <span class="pill">mxbai-embed-large</span>
+          <span class="pill">bge-m3</span>
+        </div>
+        <p class="note">
+          Llama 4 Scout was skipped for this A100 run because the official Ollama tag is about 67GB, too large for a clean full-GPU comparison on the 40GB A100.
+        </p>
+      </div>
+
+      <div class="section">
+        <h3>Run It Yourself</h3>
+        <div class="command"><span class="comment"># from pycon_llm_cost_energy/</span>
+python scripts/run_benchmark.py \
+  --config configs/lightning_a100_mixed_families.yaml \
+  --out results/a100_run
+
+python scripts/make_plots.py \
+  --metrics results/a100_run/metrics.csv</div>
+        <p class="note" style="margin-top:6px;">
+          Familiar tools only: <code>pandas</code>, <code>numpy</code>, <code>matplotlib</code>, Ollama/OpenAI-compatible clients, and NVIDIA NVML when a GPU is present. The open repo includes notebooks for editing workloads, models, and endpoints.
+        </p>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="section">
+        <div class="section-title">3. Results At A Glance</div>
+        <div class="metric-grid">
+          <div class="metric">
+            <div class="num">9.8×</div>
+            <div class="caption">Mistral Small 3.2 summarization was faster on A100 than CPU.</div>
+          </div>
+          <div class="metric">
+            <div class="num">8.5×</div>
+            <div class="caption">Mistral classification used less net active-device energy on GPU.</div>
+          </div>
+          <div class="metric">
+            <div class="num">CPU</div>
+            <div class="caption">Small embedding batches can still favor CPU, especially for tiny models.</div>
+          </div>
+        </div>
+        <p class="note">
+          Active device energy follows the paper-style view: CPU estimate for CPU rows, and A100 NVML energy above idle for GPU rows.
+        </p>
+      </div>
+
+      <div class="figure tall">
+        <div class="fig-caption">Latency Waterfall: Chat <span>network + prefill + inference + post</span></div>
+        <img src="assets/latency_waterfall_chat.png" alt="Latency waterfall for chat workload" />
+      </div>
+
+      <div class="figure tall">
+        <div class="fig-caption">Active Device Energy: Summarization <span>CPU estimate vs net A100 NVML</span></div>
+        <img src="assets/energy_active_device_summarization.png" alt="Active device energy for summarization workload" />
+      </div>
+
+    </div>
+
+    <div class="col">
+      <div class="section" style="margin-bottom:6px;">
+        <div class="section-title">4. Cost + Energy Takeaways</div>
+        <p class="note">Read cost per request next to cost per 1,000 tokens, then compare active-device energy for CPU and A100 runs.</p>
+      </div>
+
+      <div class="figure medium">
+        <div class="fig-caption">Cost Bars: Chat <span>per request + per 1,000 tokens</span></div>
+        <img src="assets/cost_bars_chat.png" alt="Cost bars for chat workload" />
+      </div>
+
+      <div class="section">
+        <div class="section-title yellow">CPU vs A100 Examples</div>
+        <table>
+          <thead>
+            <tr><th>Workload / Model</th><th>CPU</th><th>A100</th><th>Takeaway</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Llama 3.2 3B chat</td>
+              <td>3.03s / 156J</td>
+              <td class="best">0.83s / 64J</td>
+              <td>small models still benefit</td>
+            </tr>
+            <tr>
+              <td>Mistral 24B summarize</td>
+              <td>18.63s / 1188J</td>
+              <td class="best">1.90s / 465J</td>
+              <td>GPU changes usability</td>
+            </tr>
+            <tr>
+              <td>Mistral 24B classify</td>
+              <td>1.59s / 96J</td>
+              <td class="best">0.29s / 11J</td>
+              <td>short outputs are cheap</td>
+            </tr>
+            <tr>
+              <td>Nomic batch embed</td>
+              <td class="best">0.29s / 8J</td>
+              <td>0.75s / 13J</td>
+              <td>batch size matters</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="figure compact">
+        <div class="fig-caption">Active Device Energy: Batch Embeddings <span>small batch counterexample</span></div>
+        <img src="assets/energy_active_device_batch_embeddings.png" alt="Active device energy for batch embedding workload" />
+      </div>
+
+      <div class="section">
+        <div class="section-title">Energy Accounting</div>
+        <div class="compact-list">
+          <div><strong>GPU:</strong> NVML sampled at 10Hz; report net energy above idle: <code>J = (avg watts - idle watts) × seconds</code>.</div>
+          <div><strong>CPU:</strong> Lightning did not expose RAPL, so CPU rows use a labeled TDP × utilization estimate.</div>
+          <div><strong>Poster view:</strong> <code>active_device_energy_j</code> compares CPU estimate with net A100 GPU energy.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Practical Heuristics</div>
+        <div class="rules">
+          <div class="rule">
+            <b>Benchmark the workload, not the model card.</b>
+            <p>Chat, summarization, labels, RAG ranking, and embeddings stress different parts of the stack.</p>
+          </div>
+          <div class="rule">
+            <b>Large prompts and models favor GPUs.</b>
+            <p>The A100 made 24B summarization much faster and lower-energy in the active-device view.</p>
+          </div>
+          <div class="rule">
+            <b>Small embedding batches can favor CPU.</b>
+            <p>Increase batch size before assuming GPU wins.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="qr">
+        <div class="qr-box" aria-hidden="true"></div>
+        <p><strong>Open repo + ready-to-run notebooks</strong><br>Replace this placeholder with a QR code for the public repository before printing.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div>
+      <strong>Artifacts:</strong> reproducible configs, notebooks, row-level metrics, summaries, plots, and response logs. Results shown here were produced on a Lightning.ai NVIDIA A100-SXM4-40GB VM.
+    </div>
+    <div>
+      <strong>Cost model:</strong> electricity-only estimate at $0.18/kWh; no cloud rental or API invoice added unless configured.
+    </div>
+  </footer>
+
+  <div class="bottom-bar">
+    <span>Cost &amp; Energy of Everyday LLM Workloads</span>
+    <span>Python scripts + pandas + matplotlib + LLM clients</span>
+  </div>
+</main>
+</body>
+</html>

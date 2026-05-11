@@ -1,0 +1,82 @@
+run_id: lightning_a100_qwen35
+data_dir: ../data
+repeats: 2
+workloads:
+  - chat
+  - summarization
+  - classification
+  - rag_rank
+  - batch_embeddings
+
+costs:
+  electricity_usd_per_kwh: 0.18
+  hardware_usd_per_request: 0.0
+
+default_options:
+  temperature: 0.1
+  top_p: 0.95
+  seed: 42
+  num_predict: 96
+  num_ctx: 4096
+
+providers:
+  ollama_local:
+    type: ollama
+    base_url: http://localhost:11434
+    timeout_s: 1200
+
+hardware_profiles:
+  cpu:
+    enabled: true
+    label: CPU / num_gpu=0
+    cpu_tdp_watts: 120
+    provider_options:
+      ollama:
+        num_gpu: 0
+        num_thread: 16
+  gpu:
+    enabled: true
+    label: A100 40GB / Ollama GPU
+    gpu_indices: [0]
+    cpu_tdp_watts: 120
+    provider_options:
+      ollama:
+        num_gpu: 999
+
+generation_models:
+  - name: qwen3.5:0.8b
+    label: Qwen 3.5 0.8B
+    provider: ollama_local
+    family: qwen3.5
+    size: 0.8B
+  - name: qwen3.5:4b
+    label: Qwen 3.5 4B
+    provider: ollama_local
+    family: qwen3.5
+    size: 4B
+  - name: qwen3.5:9b
+    label: Qwen 3.5 9B
+    provider: ollama_local
+    family: qwen3.5
+    size: 9B
+
+embedding_models:
+  - name: qwen3-embedding:0.6b
+    label: Qwen3 Embed 0.6B
+    provider: ollama_local
+    family: qwen3-embedding
+    size: 0.6B
+  - name: qwen3-embedding:4b
+    label: Qwen3 Embed 4B
+    provider: ollama_local
+    family: qwen3-embedding
+    size: 4B
+
+workload_options:
+  batch_embeddings:
+    batch_size: 4
+  rag_rank:
+    top_k: 3
+
+notes:
+  llama4_scout_skipped: "Ollama lists llama4:scout at 67GB, which exceeds this Lightning A100 40GB GPU's VRAM for a clean full-GPU comparison."
