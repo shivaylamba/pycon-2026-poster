@@ -24,6 +24,9 @@ instead of calling a hosted API. Mention latency, privacy, concurrency, and cost
 
 HARDWARE = {
     "a100_gpu": {"label": "A100 GPU", "options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "l40s_gpu": {"label": "L40S GPU", "options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "datacenter_gpu": {"label": "Datacenter GPU", "options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "consumer_gpu": {"label": "Consumer GPU", "options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
     "cpu": {"label": "CPU only", "options": {"num_gpu": 0}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
 }
 
