@@ -7,6 +7,68 @@ Notebook-first benchmark kit for the PyCon US poster:
 This is intentionally separate from the replication package in the parent
 directory. It reuses the research idea, not the paper's code.
 
+## Systems Field Guide Track
+
+The newer poster track is:
+
+**Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads: A Visual Python Field Guide**
+
+It benchmarks five independent deployment dimensions:
+
+- **A: model size** within the same family: Gemma, Phi-3, Granite Code, CodeLlama
+- **B: quantization** for the same model: fp16 vs q8 vs q4
+- **C: architecture** at similar scale: Gemma, Mistral, CodeLlama, DeepSeek Coder
+- **D: hardware**: CPU-only vs A100 GPU, with consumer GPU profiles supported by the same code
+- **E: system flow**: request lifecycle, power traces, memory movement, and energy accounting
+
+Run it on a Lightning.ai A100 VM:
+
+```bash
+cd /home/zeus/pycon_llm_cost_energy
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+python scripts/fieldguide_pull_models.py --experiment all --include-embeddings
+
+python scripts/fieldguide_run.py \
+  --experiment all \
+  --hardware a100_gpu \
+  --out results/fieldguide_a100_all \
+  --limit 2 \
+  --repeats 1 \
+  --skip-pull \
+  --save-traces
+
+python scripts/fieldguide_run.py \
+  --experiment D \
+  --hardware a100_gpu,cpu \
+  --models codellama-7b-q4 \
+  --out results/fieldguide_cpu_gpu_d \
+  --limit 2 \
+  --repeats 1 \
+  --skip-pull \
+  --save-traces
+
+python scripts/fieldguide_concurrency.py \
+  --model codellama-7b-q4 \
+  --hardware a100_gpu,cpu \
+  --out results/fieldguide_cpu_gpu_d \
+  --levels 1,2,4
+```
+
+The final visualization pass expects a `metrics.csv` plus optional
+`concurrency_metrics.csv` and `traces/power_samples.jsonl`:
+
+```bash
+python scripts/fieldguide_make_visuals.py \
+  --results results/fieldguide_a100_all \
+  --out results/fieldguide_a100_all/fieldguide_assets
+```
+
+It writes the dark observability-style printable poster to
+`fieldguide_assets/systems_tradeoffs_poster.html`.
+
 ## What It Measures
 
 The benchmark runs everyday Python-developer LLM scenarios:

@@ -1,0 +1,23 @@
+name: pycon-systems-field-guide-a100
+hardware_profiles:
+  - a100_gpu
+  - cpu
+experiments:
+  - A
+  - B
+  - C
+  - D
+  - E
+workloads:
+  - code_generation
+  - document_summarization
+  - embedding_generation_semantic_search
+  - chat_completion
+energy:
+  gpu: pynvml
+  cpu: pyRAPL_if_available_else_tdp_estimate
+  sample_interval_s: 0.1
+cost:
+  electricity_usd_per_kwh: 0.18
+  a100_usd_per_hour_estimate: 2.50
+  cpu_usd_per_hour_estimate: 0.20
