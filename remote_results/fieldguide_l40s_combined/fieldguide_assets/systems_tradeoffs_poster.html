@@ -37,6 +37,7 @@
     .col:last-child { border-right:none; }
     .section { margin-bottom:8px; }
     .section-title { font-size:12px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:3px; border-bottom:2px solid var(--accent); margin-bottom:6px; }
+    .section-title.blue { color:var(--blue); border-bottom-color:var(--blue); }
     .learning-title { font-size:15px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }
     .tagline { font-size:10.2px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }
     p, li { font-size:9.4px; line-height:1.37; color:var(--body); }
@@ -56,12 +57,16 @@
     .fig-caption { background:var(--surface); padding:4px 9px; font-size:8.8px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }
     .fig-body { padding:5px; }
     .chart { width:100%; display:block; object-fit:contain; }
-    .chart-life { height:142px; }
-    .chart-large { height:270px; }
-    .chart-xl { height:325px; }
+    .chart-life { height:220px; }
+    .chart-large { height:258px; }
+    .chart-xl { height:292px; }
     .chart-mid { height:230px; }
     .chart-small { height:145px; }
     .callout { background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.4px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }
+    .score-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }
+    .score-card { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:54px; }
+    .score-card b { display:block; color:var(--heading); font-size:8.8px; margin-bottom:2px; }
+    .score-card span { display:block; color:var(--body); font-size:7.8px; line-height:1.25; }
     .decision { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px; }
     .decision div { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:58px; }
     .decision b { display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }
@@ -114,7 +119,7 @@
         <table>
           <thead><tr><th>Question</th><th>Measured Signals</th><th>Why It Matters</th></tr></thead>
           <tbody>
-            <tr><td>Bigger model?</td><td>quality, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
+            <tr><td>Bigger model?</td><td>toy score, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
             <tr><td>Quantize?</td><td>q4/q8/fp16, tokens/J</td><td>fit smaller hardware</td></tr>
             <tr><td>Which workload?</td><td>task score by model</td><td>avoid one-model thinking</td></tr>
           </tbody>
@@ -139,6 +144,16 @@
         </div>
         <p class="note">A slow or expensive call can be caused by tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, or post-processing.</p>
       </div>
+
+      <div class="section">
+        <div class="section-title blue">What The Numbers Mean</div>
+        <div class="score-grid">
+          <div class="score-card"><b>Toy task score</b><span>Small reproducible task signal. Example: 0.67 means 2 of 3 deterministic checks passed.</span></div>
+          <div class="score-card"><b>Energy</b><span>Active-device joules: GPU NVML draw minus idle baseline, or labeled CPU estimate.</span></div>
+          <div class="score-card"><b>Tokens/J</b><span>Generated or processed tokens divided by active-device energy.</span></div>
+          <div class="score-card"><b>Interpretation</b><span>Use trends for deployment decisions; this is not a universal model leaderboard.</span></div>
+        </div>
+      </div>
     </div>
 
     <div class="col">
@@ -150,7 +165,7 @@
           <div class="fig-caption"><span>Takeaway: quality can flatten while joules, latency, and VRAM keep rising</span><span>same-family scaling</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
-        <div class="callout">Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical. Smaller models can be the economic optimum.</div>
+        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
       </div>
 
       <div class="section">
@@ -158,9 +173,10 @@
         <div class="learning-title">Quantization Changes the Economics of AI</div>
         <div class="tagline">4-bit models often preserve useful intelligence at a fraction of infrastructure cost.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: q4/q8 reduce VRAM and energy enough to change where models can run</span><span>same model, different precision</span></div>
+          <div class="fig-caption"><span>Left = costs to minimize; right = benefits to preserve</span><span>% of same-model FP16 baseline</span></div>
           <div class="fig-body"><img class="chart chart-xl" src="learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
         </div>
+        <div class="callout">Takeaway: quantization is not just a speed trick. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment,” while toy-task scores usually stay in the same range.</div>
       </div>
     </div>
 
@@ -170,10 +186,10 @@
         <div class="learning-title">No Single Model Wins Every Workload</div>
         <div class="tagline">The efficient model depends on whether you are doing code, summaries, chat, RAG, or embeddings.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: similar-size models specialize differently by workload</span><span>color = measured task score</span></div>
+          <div class="fig-caption"><span>Takeaway: best score and best efficiency can be different models</span><span>same hardware, different workload</span></div>
           <div class="fig-body"><img class="chart chart-mid" src="learning3_workload_specialization.png" alt="Workload specialization"></div>
         </div>
-        <p class="note">This is why “best model” is the wrong question. The better question is: best model for which workload, on which hardware, at what latency and energy budget?</p>
+        <p class="note">Read each card as a deployment choice: the first line is the highest toy-task result, the second line is the model that produced the most active tokens per joule.</p>
       </div>
 
       <div class="section">
