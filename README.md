@@ -18,7 +18,7 @@ It benchmarks five independent deployment dimensions:
 - **A: model size** within the same family: Gemma, Phi-3, Granite Code, CodeLlama
 - **B: quantization** for the same model: fp16 vs q8 vs q4
 - **C: architecture** at similar scale: Gemma, Mistral, CodeLlama, DeepSeek Coder
-- **D: hardware**: CPU-only vs A100 GPU, with consumer GPU profiles supported by the same code
+- **D: hardware**: CPU-only vs datacenter GPU (`l40s_gpu` / `a100_gpu`), with consumer GPU profiles supported by the same code
 - **E: system flow**: request lifecycle, power traces, memory movement, and energy accounting
 
 Run it on a Lightning.ai GPU VM:
@@ -34,7 +34,7 @@ python scripts/fieldguide_pull_models.py --experiment all --include-embeddings
 python scripts/fieldguide_run.py \
   --experiment all \
   --hardware l40s_gpu \
-  --out results/fieldguide_l40s_all \
+  --out results/fieldguide_l40s_full \
   --limit 3 \
   --repeats 1 \
   --skip-pull \
@@ -61,13 +61,21 @@ The final visualization pass expects a `metrics.csv` plus optional
 `concurrency_metrics.csv` and `traces/power_samples.jsonl`:
 
 ```bash
+python scripts/fieldguide_combine_results.py \
+  --inputs results/fieldguide_l40s_full,results/fieldguide_l40s_cpu_gpu_d \
+  --out results/fieldguide_l40s_combined
+
 python scripts/fieldguide_make_visuals.py \
-  --results results/fieldguide_l40s_all \
-  --out results/fieldguide_l40s_all/fieldguide_assets
+  --results results/fieldguide_l40s_combined \
+  --out results/fieldguide_l40s_combined/fieldguide_assets
 ```
 
 It writes the dark observability-style printable poster to
 `fieldguide_assets/systems_tradeoffs_poster.html`.
+
+This repository also includes a completed L40S benchmark export under
+`remote_results/fieldguide_l40s_combined/`, including reproducible CSVs,
+power traces, PNG/SVG assets, and a screenshot preview of the final poster.
 
 ## What It Measures
 

@@ -1,0 +1,15 @@
+{
+  "platform": "Linux-6.8.0-1024-aws-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "processor": "x86_64",
+  "cpu_count_logical": 16,
+  "cpu_count_physical": 8,
+  "memory_gb": 124.12,
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA L40S",
+      "memory_gb": 44.99
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260">
+<rect width="900" height="260" fill="#08111f"/>
+<text x="30" y="38" fill="#e5f1ff" font-size="24" font-family="Inter,Arial" font-weight="800">Where Scaling Breaks</text>
+<text x="30" y="66" fill="#8aa0bd" font-size="14">More parameters expand layers, KV cache, VRAM movement, and attention compute O(n^2).</text>
+<rect x="40" y="100" width="56" height="70" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="68" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">1x</text><rect x="135" y="96" width="56" height="79" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="163" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">2x</text><rect x="230" y="92" width="56" height="88" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="258" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">3x</text><rect x="325" y="88" width="56" height="97" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="353" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">4x</text><rect x="420" y="84" width="56" height="106" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="448" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">5x</text><rect x="515" y="80" width="56" height="115" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="543" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">6x</text><rect x="610" y="76" width="56" height="124" rx="8" fill="none" stroke="#22d3ee" stroke-width="3"/><text x="638" y="210" fill="#e5f1ff" font-size="12" text-anchor="middle">7x</text>
+<path d="M690 88 C760 110 790 160 844 190" fill="none" stroke="#fb923c" stroke-width="5"/>
+<text x="700" y="78" fill="#fb923c" font-size="18" font-weight="800">energy grows faster</text>
+<text x="700" y="218" fill="#4ade80" font-size="18" font-weight="800">quality gains flatten</text>
+<text x="400" y="88" fill="#f472b6" font-size="36" font-weight="900">O(n²)</text>
+</svg>

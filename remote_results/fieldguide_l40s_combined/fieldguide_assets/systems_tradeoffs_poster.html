@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</title>
+<style>
+@page { size: 84.1cm 59.4cm landscape; margin: 0; }
+body { margin:0; background:#030712; font-family:Aptos,ui-sans-serif,system-ui,sans-serif; color:#e5f1ff; }
+.poster { width:min(100vw,1580px); aspect-ratio:84.1/59.4; margin:auto; background:linear-gradient(135deg,#06101d 0%,#071625 52%,#120d21 100%); display:grid; grid-template-rows:76px 126px minmax(0,1fr) 92px; gap:8px; padding:16px; box-sizing:border-box; overflow:hidden; position:relative; }
+.poster:before { content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(96,165,250,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,.07) 1px,transparent 1px); background-size:28px 28px; pointer-events:none; mask-image:linear-gradient(to bottom,black,transparent 88%); }
+.poster > * { position:relative; z-index:1; }
+.header { display:grid; grid-template-columns:minmax(0,1fr) 430px; align-items:start; border-bottom:2px solid #22d3ee; padding-bottom:8px; min-width:0; }
+h1 { margin:0; font-size:29px; letter-spacing:-.02em; line-height:1.02; max-width:990px; }
+.subtitle { color:#9fb2ca; margin-top:6px; font-size:12px; }
+.thesis { color:#4ade80; font-weight:850; font-size:15px; text-align:right; line-height:1.18; }
+.thesis span { color:#9fb2ca; font-size:12px; font-weight:750; }
+.hero { display:grid; grid-template-columns:minmax(0,1fr) 308px; gap:8px; min-height:0; }
+.hero img { width:100%; height:100%; object-fit:contain; border:1px solid #23344f; border-radius:9px; background:#0d1b2f; min-height:0; }
+.kpis { display:grid; grid-template-columns:1fr 1fr; gap:7px; min-height:0; }
+.kpi { background:#0d1b2f; border:1px solid #23344f; border-radius:9px; padding:9px; overflow:hidden; }
+.kpi b { display:block; color:#22d3ee; font-size:21px; line-height:1; margin-bottom:4px; } .kpi span { color:#9fb2ca; font-size:11px; line-height:1.22; display:block; }
+.grid { display:grid; grid-template-columns:.95fr 1.22fr .95fr; gap:8px; min-height:0; overflow:hidden; }
+.col { display:grid; gap:8px; min-width:0; min-height:0; overflow:hidden; }
+.col.left { grid-template-rows:1fr .98fr; }
+.col.center { grid-template-rows:1.02fr .76fr .92fr; }
+.col.right { grid-template-rows:.92fr .92fr .72fr; }
+.panel { background:rgba(13,27,47,.92); border:1px solid #23344f; border-radius:9px; padding:7px; min-height:0; overflow:hidden; box-shadow:0 0 0 1px rgba(34,211,238,.05) inset; display:flex; flex-direction:column; }
+.panel h2 { margin:0 0 5px; font-size:12px; color:#e5f1ff; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #23344f; padding-bottom:5px; flex:0 0 auto; }
+.panel img { width:100%; min-height:0; height:100%; object-fit:contain; display:block; border-radius:6px; flex:1 1 auto; }
+.panel .callout { flex:0 0 auto; }
+.note { color:#9fb2ca; font-size:11px; line-height:1.32; }
+.callout { color:#facc15; font-size:12px; font-weight:850; line-height:1.18; margin-top:3px; }
+.bottom { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; min-height:0; }
+.insight { background:#0d1b2f; border:1px solid #23344f; border-radius:9px; padding:8px; font-size:10.7px; line-height:1.16; overflow:hidden; }
+.insight b { color:#4ade80; display:block; margin-bottom:3px; font-size:11.5px; }
+</style></head><body><main class="poster">
+<section class="header"><div><h1>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</h1><div class="subtitle">A Visual Python Field Guide for local LLM deployment, observability, and systems tradeoffs · PyCon US · Shivay Lamba / Suvrakamal Das</div></div><div class="thesis">The most accurate LLM is often not the most economically efficient one.<br><span style="color:#8aa0bd;font-size:13px;font-weight:700">Deployment is a systems engineering problem.</span></div></section>
+<section class="hero"><img src="request_lifecycle.svg" alt="request lifecycle"><div class="kpis"><div class="kpi"><b>5</b><span>isolated dimensions: size, quantization, architecture, hardware, workload</span></div><div class="kpi"><b>tokens/J</b><span>practical deployment efficiency metric</span></div><div class="kpi"><b>NVML</b><span>GPU power, VRAM, utilization traces</span></div><div class="kpi"><b>RAPL</b><span>CPU power when available; labeled estimate otherwise</span></div></div></section>
+<section class="grid">
+<div class="col left"><div class="panel"><h2>Scaling laws & diminishing returns</h2><img src="experiment_a_scaling_curves.png"></div><div class="panel"><h2>Energy vs accuracy frontier</h2><img src="energy_accuracy_frontier.png"><div class="callout">Scaling can push energy faster than quality.</div></div></div>
+<div class="col center"><div class="panel"><h2>Quantization efficiency</h2><img src="experiment_b_quantization.png"><div class="callout">4-bit quantized models often retain most quality at a fraction of memory and energy.</div></div><div class="panel"><h2>Quantization waterfall</h2><img src="experiment_b_efficiency_waterfall.png"></div><div class="panel"><h2>Architecture specialization</h2><img src="experiment_c_workload_heatmap.png"></div></div>
+<div class="col right"><div class="panel"><h2>CPU vs GPU deployment</h2><img src="experiment_d_cpu_gpu.png"></div><div class="panel"><h2>Latency waterfall</h2><img src="experiment_d_latency_waterfall.png"></div><div class="panel"><h2>System energy flow</h2><img src="experiment_e_energy_sankey.svg"></div></div>
+</section>
+<section class="bottom">
+<div class="insight"><b>1. Diminishing returns</b>Larger models frequently add cost faster than accuracy.</div>
+<div class="insight"><b>2. Quantization wins</b>Compression improves practical deployment efficiency.</div>
+<div class="insight"><b>3. Workloads differ</b>Architecture choice depends on code, chat, summary, and search patterns.</div>
+<div class="insight"><b>4. Systems problem</b>LLM deployment is infrastructure engineering, not just model selection.</div>
+<div class="insight"><b>5. Energy matters</b>Inference energy becomes operational cost when workloads repeat.</div>
+<div class="insight"><b>6. Concurrency flips economics</b>GPUs become stronger as batching and parallelism rise.</div>
+<div class="insight"><b>7. Measure locally</b>Use the notebooks and CSV pipeline to retest your own endpoints.</div>
+</section></main></body></html>
