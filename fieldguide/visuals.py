@@ -74,7 +74,8 @@ def add_energy_views(df: pd.DataFrame) -> pd.DataFrame:
     df["gpu_idle_power_w_used"] = idle_w
     df["net_gpu_energy_j"] = (df["gpu_energy_j"].fillna(0.0) - idle_w * elapsed).clip(lower=0.0)
     df["active_device_energy_j"] = np.where(df["hardware_profile"].eq("cpu"), df["cpu_energy_j"].fillna(0.0), df["net_gpu_energy_j"])
-    df["active_tokens_per_joule"] = np.where(df["active_device_energy_j"] > 0, df["output_tokens"].fillna(df["total_tokens"]) / df["active_device_energy_j"], 0.0)
+    token_basis = np.where(df["output_tokens"].fillna(0) > 0, df["output_tokens"].fillna(0), df["total_tokens"].fillna(0))
+    df["active_tokens_per_joule"] = np.where(df["active_device_energy_j"] > 0, token_basis / df["active_device_energy_j"], 0.0)
     return df
 
 
@@ -432,7 +433,7 @@ def write_transformer_svg(path: Path) -> Path:
 def write_lifecycle_svg(path: Path) -> Path:
     stages = ["User Prompt", "CPU Tokenization", "RAM Transfer", "VRAM Loading", "Transformer Inference", "KV Cache", "Sampling", "Post Process", "Response"]
     x = 28
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260"><rect width="1200" height="260" fill="{NEON["bg"]}"/>']
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 260"><rect width="1500" height="260" fill="{NEON["bg"]}"/>']
     parts.append(f'<text x="28" y="36" fill="{NEON["text"]}" font-size="24" font-weight="800">What Actually Happens During an LLM Request?</text>')
     for i, stage in enumerate(stages):
         width = 118 if i != 4 else 170
@@ -473,19 +474,21 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
 <style>
 @page {{ size: 84.1cm 59.4cm landscape; margin: 0; }}
 body {{ margin:0; background:#030712; font-family:Inter,ui-sans-serif,system-ui,sans-serif; color:#e5f1ff; }}
-.poster {{ width:min(100vw,1580px); aspect-ratio:84.1/59.4; margin:auto; background:radial-gradient(circle at 20% 0%,#13213a,#07101f 48%,#030712); display:grid; grid-template-rows:86px 142px 1fr 138px; gap:10px; padding:18px; box-sizing:border-box; overflow:hidden; }}
+.poster {{ width:min(100vw,1580px); aspect-ratio:84.1/59.4; margin:auto; background:linear-gradient(135deg,#07101f 0%,#08111f 48%,#110d21 100%); display:grid; grid-template-rows:86px 142px 1fr 138px; gap:10px; padding:18px; box-sizing:border-box; overflow:hidden; position:relative; }}
+.poster:before {{ content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(96,165,250,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,.08) 1px,transparent 1px); background-size:28px 28px; pointer-events:none; mask-image:linear-gradient(to bottom,black,transparent 88%); }}
+.poster > * {{ position:relative; z-index:1; }}
 .header {{ display:grid; grid-template-columns:1fr auto; align-items:start; border-bottom:2px solid #22d3ee; padding-bottom:10px; }}
 h1 {{ margin:0; font-size:34px; letter-spacing:-.02em; line-height:1.05; }}
 .subtitle {{ color:#8aa0bd; margin-top:7px; font-size:14px; }}
 .thesis {{ color:#4ade80; font-weight:800; font-size:18px; text-align:right; max-width:460px; }}
 .hero {{ display:grid; grid-template-columns:1fr 320px; gap:12px; }}
-.hero img {{ width:100%; height:100%; object-fit:cover; border:1px solid #23344f; border-radius:10px; background:#0d1b2f; }}
+.hero img {{ width:100%; height:100%; object-fit:contain; border:1px solid #23344f; border-radius:10px; background:#0d1b2f; }}
 .kpis {{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }}
 .kpi {{ background:#0d1b2f; border:1px solid #23344f; border-radius:10px; padding:12px; }}
 .kpi b {{ display:block; color:#22d3ee; font-size:24px; }} .kpi span {{ color:#8aa0bd; font-size:12px; }}
 .grid {{ display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:10px; min-height:0; }}
 .col {{ display:flex; flex-direction:column; gap:10px; min-width:0; }}
-.panel {{ background:rgba(13,27,47,.86); border:1px solid #23344f; border-radius:10px; padding:8px; min-height:0; overflow:hidden; }}
+.panel {{ background:rgba(13,27,47,.90); border:1px solid #23344f; border-radius:10px; padding:8px; min-height:0; overflow:hidden; box-shadow:0 0 0 1px rgba(34,211,238,.06) inset; }}
 .panel h2 {{ margin:0 0 8px; font-size:16px; color:#e5f1ff; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #23344f; padding-bottom:6px; }}
 .panel img {{ width:100%; max-height:230px; object-fit:contain; display:block; border-radius:6px; }}
 .note {{ color:#8aa0bd; font-size:12px; line-height:1.35; }}
@@ -494,7 +497,7 @@ h1 {{ margin:0; font-size:34px; letter-spacing:-.02em; line-height:1.05; }}
 .insight {{ background:#0d1b2f; border:1px solid #23344f; border-radius:10px; padding:10px; font-size:13px; line-height:1.25; }}
 .insight b {{ color:#4ade80; display:block; margin-bottom:4px; }}
 </style></head><body><main class="poster">
-<section class="header"><div><h1>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</h1><div class="subtitle">A Visual Python Field Guide for local LLM deployment, observability, and systems tradeoffs · PyCon US · Shivay Lamba / Suvrakamal Das</div></div><div class="thesis">The most accurate LLM is often not the most economically efficient one.</div></section>
+<section class="header"><div><h1>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</h1><div class="subtitle">A Visual Python Field Guide for local LLM deployment, observability, and systems tradeoffs · PyCon US · Shivay Lamba / Suvrakamal Das</div></div><div class="thesis">The most accurate LLM is often not the most economically efficient one.<br><span style="color:#8aa0bd;font-size:13px;font-weight:700">Deployment is a systems engineering problem.</span></div></section>
 <section class="hero"><img src="request_lifecycle.svg" alt="request lifecycle"><div class="kpis"><div class="kpi"><b>5</b><span>isolated dimensions: size, quantization, architecture, hardware, workload</span></div><div class="kpi"><b>tokens/J</b><span>practical deployment efficiency metric</span></div><div class="kpi"><b>NVML</b><span>GPU power, VRAM, utilization traces</span></div><div class="kpi"><b>RAPL</b><span>CPU power when available; labeled estimate otherwise</span></div></div></section>
 <section class="grid">
 <div class="col"><div class="panel"><h2>Scaling laws & diminishing returns</h2><img src="experiment_a_scaling_curves.png"></div><div class="panel"><h2>Energy vs accuracy frontier</h2><img src="energy_accuracy_frontier.png"><div class="callout">Scaling can push energy faster than quality.</div></div></div>
