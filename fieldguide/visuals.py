@@ -77,7 +77,7 @@ def make_visuals(results_dir: Path, out: Path) -> List[Path]:
         write_sankey(out / "experiment_e_energy_sankey.html"),
         write_sankey_svg(out / "experiment_e_energy_sankey.svg"),
         write_transformer_svg(out / "expanding_transformer.svg"),
-        write_lifecycle_svg(out / "request_lifecycle.svg"),
+        write_lifecycle_svg(metrics, out / "request_lifecycle.svg"),
         write_memory_svg(out / "memory_movement.svg"),
         build_story_poster(results_dir, out, out / "systems_tradeoffs_poster.html"),
     ]
@@ -165,13 +165,12 @@ def quant_color(value: str) -> str:
 def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
     gpu = primary_gpu_profile(summary)
     data = summary[(summary.hardware_profile == gpu) & (summary.quantization == "q4") & (summary.workload == "code_generation")].copy()
-    data = data[data.family.isin(["Gemma", "Phi3", "Granite", "Granite Code", "CodeLlama"])]
+    families = ["Gemma", "Phi3", "Granite", "Granite Code", "CodeLlama"]
+    data = data[data.family.isin(families)]
     if data.empty:
         return blank(path, "Learning 1: Bigger Models Have Diminishing Returns")
 
-    fig, (ax_score, ax_cost) = plt.subplots(1, 2, figsize=(11.0, 4.5), gridspec_kw={"width_ratios": [1.0, 1.08]})
-    for ax in (ax_score, ax_cost):
-        light_ax(ax)
+    fig, axes = plt.subplots(2, 2, figsize=(11.0, 5.9), sharex=True)
     colors = {
         "Gemma": POSTER_COLORS["blue"],
         "Phi3": POSTER_COLORS["green"],
@@ -179,34 +178,29 @@ def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
         "Granite Code": POSTER_COLORS["orange"],
         "CodeLlama": POSTER_COLORS["purple"],
     }
-    for family, sub in data.groupby("family"):
-        sub = sub.sort_values("params_b")
-        color = colors.get(family, POSTER_COLORS["blue"])
-        ax_score.plot(sub["params_b"], sub["score"], marker="o", linewidth=2.4, color=color, label=family)
-
-        base = sub.iloc[0]
-        cost_index = (
-            sub["active_device_energy_j"] / max(float(base["active_device_energy_j"]), 1e-9) +
-            sub["total_latency_s"] / max(float(base["total_latency_s"]), 1e-9) +
-            sub["gpu_mem_peak_mb"] / max(float(base["gpu_mem_peak_mb"]), 1e-9)
-        ) / 3
-        ax_cost.plot(sub["params_b"], cost_index, marker="o", linewidth=2.4, color=color, label=family)
-
-    ax_score.set_title("Toy code score (higher is better)", fontsize=11, weight="bold")
-    ax_score.set_xlabel("Parameters (billions)")
-    ax_score.set_ylabel("Score: deterministic checks passed")
-    ax_score.set_ylim(-0.03, 1.03)
-    ax_score.legend(loc="lower left", fontsize=7.5, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
-
-    ax_cost.axhline(1.0, color=POSTER_COLORS["border"], linestyle="--", linewidth=1.2)
-    ax_cost.set_title("Infrastructure cost index (lower is better)", fontsize=11, weight="bold")
-    ax_cost.set_xlabel("Parameters (billions)")
-    ax_cost.set_ylabel("Mean of energy, latency, VRAM vs smallest variant")
-    ax_cost.text(0.02, 0.95, "1.0 = smallest model in same family", transform=ax_cost.transAxes, va="top", fontsize=8.2, color=POSTER_COLORS["body"], bbox=dict(facecolor="#ffffff", edgecolor=POSTER_COLORS["border"], boxstyle="round,pad=0.25"))
-
-    fig.suptitle("Measured benchmark: same architecture/family, different sizes", fontsize=14, weight="bold", color=POSTER_COLORS["ink"])
-    fig.text(0.5, 0.02, "Cost index combines active-device energy/request, latency/request, and peak VRAM. Quality is a toy code-generation pass rate, not a universal model score.", ha="center", fontsize=8.8, color=POSTER_COLORS["body"])
-    fig.tight_layout(rect=[0, 0.06, 1, 0.91])
+    panels = [
+        ("score", "Toy/code score", "higher is better", None),
+        ("active_device_energy_j", "Energy/request (J)", "lower is better", None),
+        ("total_latency_s", "Latency/request (s)", "lower is better", None),
+        ("gpu_mem_peak_mb", "Peak VRAM (GB)", "lower is better", 1024.0),
+    ]
+    for ax, (metric, title, note, divisor) in zip(axes.flat, panels):
+        light_ax(ax)
+        for family in families:
+            sub = data[data.family.eq(family)].sort_values("params_b")
+            if sub.empty:
+                continue
+            y = sub[metric] / divisor if divisor else sub[metric]
+            ax.plot(sub["params_b"], y, marker="o", linewidth=2.2, markersize=5.2, color=colors.get(family, POSTER_COLORS["blue"]), label=family)
+        ax.set_title(f"{title} ({note})", fontsize=10, weight="bold")
+        ax.set_xlabel("Parameters (billions)")
+        ax.set_ylabel(title)
+        if metric == "score":
+            ax.set_ylim(-0.03, 1.03)
+    axes[0, 0].legend(loc="best", fontsize=7, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
+    fig.suptitle("Learning 1: same-family Q4 scaling on the code-generation toy set", fontsize=14, weight="bold", color=POSTER_COLORS["ink"])
+    fig.text(0.5, 0.018, "Each panel uses the current primary-GPU, q4, code-generation filter. Quality is a toy pass rate; energy, latency, and VRAM are measured per request.", ha="center", fontsize=8.6, color=POSTER_COLORS["body"])
+    fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
     plt.close(fig)
     return path
@@ -224,19 +218,29 @@ def plot_learning2_quantization_tradeoffs(summary: pd.DataFrame, path: Path) -> 
     if data.empty:
         return blank(path, "Learning 2: Quantization Changes the Economics")
 
-    agg = data.groupby(["family", "params_b", "quantization"], dropna=False).agg(
+    same_model_keys = ["family", "architecture", "params_b"]
+    agg = data.groupby(same_model_keys + ["quantization"], dropna=False).agg(
         score=("score", "mean"),
         energy=("active_device_energy_j", "mean"),
         latency=("total_latency_s", "mean"),
         throughput=("tokens_per_sec", "mean"),
         vram=("gpu_mem_peak_mb", "mean"),
     ).reset_index()
+    required_quants = {"fp16", "q8", "q4"}
+    complete = []
+    for _, sub in agg.groupby(same_model_keys, dropna=False):
+        if required_quants.issubset(set(sub["quantization"])):
+            complete.append(sub)
+    if not complete:
+        return blank(path, "Learning 2: Quantization Changes the Economics", "Needs matching fp16, q8, and q4 rows for the same models.")
+    agg = pd.concat(complete, ignore_index=True)
     rows = []
-    for (family, params_b), sub in agg.groupby(["family", "params_b"]):
+    for _, sub in agg.groupby(same_model_keys, dropna=False):
         by_q = sub.set_index("quantization")
-        baseline = by_q.loc["fp16"] if "fp16" in by_q.index else by_q.iloc[0]
+        baseline = by_q.loc["fp16"]
         baseline_score = max(float(baseline["score"]), 1e-9)
-        for quantization, row in by_q.iterrows():
+        for quantization in ["fp16", "q8", "q4"]:
+            row = by_q.loc[quantization]
             rows.append({
                 "quantization": quantization,
                 "VRAM": 100 * row["vram"] / max(float(baseline["vram"]), 1e-9),
@@ -666,52 +670,93 @@ def write_transformer_svg(path: Path) -> Path:
     return path
 
 
-def write_lifecycle_svg(path: Path) -> Path:
+def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
+    model_id = "codellama-7b-q4"
+    workload = "chat_completion"
+    hardware = primary_gpu_profile(metrics)
+    data = metrics[
+        metrics["model_id"].eq(model_id)
+        & metrics["workload"].eq(workload)
+        & metrics["hardware_profile"].eq(hardware)
+        & metrics.get("status", pd.Series("ok", index=metrics.index)).fillna("ok").eq("ok")
+    ].copy()
+    if data.empty:
+        data = metrics[metrics["hardware_profile"].eq(hardware)].copy()
+    row = data.mean(numeric_only=True)
+    label = str(data["model_label"].dropna().iloc[0]) if "model_label" in data and not data["model_label"].dropna().empty else "CodeLlama 7B Q4"
+    hw_label = str(data["hardware_label"].dropna().iloc[0]) if "hardware_label" in data and not data["hardware_label"].dropna().empty else hardware.replace("_", " ").upper()
+
+    net_gpu_j = float(row.get("net_gpu_energy_j", row.get("active_device_energy_j", 0.0)))
+    cpu_j = float(row.get("cpu_energy_j", 0.0))
+    raw_gpu_j = float(row.get("gpu_energy_j", 0.0))
+    total_device_j = net_gpu_j + cpu_j
+    latency = float(row.get("total_latency_s", 0.0))
+    gpu_util = float(row.get("gpu_util_avg_pct", 0.0))
+    cpu_util = float(row.get("cpu_util_avg_pct", 0.0))
+    peak_vram_gb = float(row.get("gpu_mem_peak_mb", 0.0)) / 1024.0
+    tokens_j = float(row.get("active_tokens_per_joule", 0.0))
+    output_tokens = float(row.get("output_tokens", 0.0))
+    input_tokens = float(row.get("input_tokens", 0.0))
+
     stages = [
-        ("Prompt", "NET", "request size", "#2563eb", 66),
-        ("Python client", "CPU", "adapter + timers", "#1d4ed8", 82),
-        ("Tokenize", "CPU", "prefill work", "#ca8a04", 86),
-        ("CPU + RAM", "RAM", "copy tensors", "#0e7490", 82),
-        ("VRAM load", "VRAM", "weights/cache", "#7c3aed", 84),
-        ("Transformer", "GPU", "attention + MLP", "#16a34a", 104),
-        ("KV cache", "VRAM", "context memory", "#ea580c", 84),
-        ("Sampling", "GPU", "decode loop", "#be185d", 76),
-        ("Post-process", "CPU", "parse/rank", "#1d4ed8", 84),
-        ("Response", "NET", "return", "#2563eb", 64),
+        ("Network", "NET", f"{float(row.get('network_s', 0.0)):.2f}s", "#2563eb", 74),
+        ("Python", "CPU", f"{cpu_util:.0f}% CPU", "#1d4ed8", 78),
+        ("Tokenize", "CPU", f"{float(row.get('tokenization_s', 0.0)):.2f}s", "#ca8a04", 82),
+        ("CPU/RAM", "RAM", "prep + copy", "#0e7490", 82),
+        ("VRAM", "VRAM", f"{peak_vram_gb:.1f}GB", "#7c3aed", 78),
+        ("Inference", "GPU", f"{float(row.get('inference_s', 0.0)):.2f}s", "#16a34a", 92),
+        ("KV cache", "VRAM", "context", "#ea580c", 78),
+        ("Sampling", "GPU", f"{gpu_util:.0f}% GPU", "#be185d", 80),
+        ("Post", "CPU", f"{float(row.get('postprocess_s', 0.0)):.3f}s", "#1d4ed8", 72),
+        ("Response", "NET", "return", "#2563eb", 68),
     ]
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360">']
     parts.append('<rect width="980" height="360" fill="#ffffff"/>')
-    parts.append('<text x="26" y="35" fill="#10213d" font-size="25" font-weight="800">What Actually Happens During One LLM Request?</text>')
-    parts.append('<text x="26" y="60" fill="#6c7a89" font-size="13.5">OpenTelemetry-style view: every row in the benchmark captures slices of latency, tokens, memory, and active-device energy.</text>')
+    parts.append(f'<text x="26" y="35" fill="#10213d" font-size="24" font-weight="800">Measured Energy Trace: {label} · Chat</text>')
+    parts.append(f'<text x="26" y="60" fill="#6c7a89" font-size="13.2">One measured L40S request profile. Energy is idle-adjusted GPU NVML plus a CPU-side estimate; raw GPU draw includes idle.</text>')
     parts.append('<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1b3a5c"/></marker></defs>')
-    parts.append('<line x1="32" y1="92" x2="948" y2="92" stroke="#d1d5db" stroke-width="2"/>')
-    parts.append('<text x="32" y="86" fill="#6c7a89" font-size="11" font-weight="800">REQUEST TRACE</text>')
+
+    kpis = [
+        ("Device-side energy", f"{total_device_j:.0f} J", "GPU active + CPU est.", "#f0f4fa"),
+        ("Active GPU energy", f"{net_gpu_j:.0f} J", "NVML minus idle", "#f0fdf4"),
+        ("CPU-side energy", f"{cpu_j:.0f} J", "RAPL/TDP estimate", "#fff7ed"),
+        ("Latency", f"{latency:.2f}s", f"{input_tokens:.0f} in / {output_tokens:.0f} out tok", "#eef4ff"),
+        ("Peak VRAM", f"{peak_vram_gb:.1f} GB", f"{tokens_j:.2f} tokens/J", "#f5f3ff"),
+    ]
+    x0 = 26
+    for title, value, sub, fill in kpis:
+        parts.append(f'<rect x="{x0}" y="80" width="178" height="58" rx="8" fill="{fill}" stroke="#d1d5db"/>')
+        parts.append(f'<text x="{x0+12}" y="101" fill="#6c7a89" font-size="10" font-weight="800">{title}</text>')
+        parts.append(f'<text x="{x0+12}" y="124" fill="#10213d" font-size="20" font-weight="900">{value}</text>')
+        parts.append(f'<text x="{x0+98}" y="124" fill="#6c7a89" font-size="9">{sub}</text>')
+        x0 += 188
+
+    parts.append('<line x1="32" y1="168" x2="948" y2="168" stroke="#d1d5db" stroke-width="2"/>')
+    parts.append(f'<text x="32" y="162" fill="#6c7a89" font-size="10.5" font-weight="800">REQUEST TRACE · {hw_label}</text>')
 
     x = 24
-    y = 105
+    y = 183
     for i, (stage, tag, hint, color, width) in enumerate(stages, start=1):
-        parts.append(f'<rect x="{x}" y="{y}" width="{width}" height="66" rx="8" fill="#f8f9fa" stroke="{color}" stroke-width="2.4"/>')
-        parts.append(f'<rect x="{x+8}" y="{y+8}" width="38" height="17" rx="8" fill="{color}" opacity=".9"/>')
-        parts.append(f'<text x="{x+27}" y="{y+21}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="800">{tag}</text>')
-        parts.append(f'<text x="{x+width/2}" y="{y+42}" text-anchor="middle" fill="#10213d" font-size="12" font-weight="800">{stage}</text>')
-        parts.append(f'<text x="{x+width/2}" y="{y+57}" text-anchor="middle" fill="#6c7a89" font-size="9">{hint}</text>')
+        parts.append(f'<rect x="{x}" y="{y}" width="{width}" height="62" rx="8" fill="#f8f9fa" stroke="{color}" stroke-width="2.2"/>')
+        parts.append(f'<rect x="{x+7}" y="{y+7}" width="36" height="16" rx="8" fill="{color}" opacity=".9"/>')
+        parts.append(f'<text x="{x+25}" y="{y+19}" text-anchor="middle" fill="#ffffff" font-size="8.5" font-weight="800">{tag}</text>')
+        parts.append(f'<text x="{x+width/2}" y="{y+39}" text-anchor="middle" fill="#10213d" font-size="11.5" font-weight="800">{stage}</text>')
+        parts.append(f'<text x="{x+width/2}" y="{y+54}" text-anchor="middle" fill="#6c7a89" font-size="8.4">{hint}</text>')
         if i < len(stages):
-            parts.append(f'<path d="M{x+width+3} {y+33} H{x+width+9}" stroke="#1b3a5c" stroke-width="2" marker-end="url(#a)"/>')
+            parts.append(f'<path d="M{x+width+3} {y+31} H{x+width+9}" stroke="#1b3a5c" stroke-width="2" marker-end="url(#a)"/>')
         x += width + 12
 
     callouts = [
-        (42, 220, "CPU tokenization can matter", "Prompt length and Python-side prep show up before generation.", "#fff7ed", "#ca8a04"),
-        (278, 220, "Memory movement can matter", "RAM/VRAM transfers and model loading affect first-token latency.", "#ecfeff", "#0e7490"),
-        (520, 220, "GPU inference dominates long outputs", "Decode loops spend repeated work on transformer blocks.", "#f0fdf4", "#16a34a"),
-        (748, 220, "KV cache grows", "Context length and generated tokens increase VRAM pressure.", "#f5f3ff", "#7c3aed"),
+        (42, 274, "GPU dominates this call", f"{net_gpu_j:.0f}J active GPU vs {cpu_j:.0f}J CPU-side estimate.", "#f0fdf4", "#16a34a"),
+        (330, 274, "VRAM footprint is visible", f"{label} peaked at {peak_vram_gb:.1f}GB on this run.", "#f5f3ff", "#7c3aed"),
+        (622, 274, "Latency is mostly inference", f"{float(row.get('inference_s', 0.0)):.2f}s of {latency:.2f}s total latency.", "#eef4ff", "#2563eb"),
     ]
-    for x0, y0, title, body, fill, stroke in callouts:
-        parts.append(f'<rect x="{x0}" y="{y0}" width="190" height="58" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="1.3"/>')
-        parts.append(f'<text x="{x0+12}" y="{y0+22}" fill="#10213d" font-size="12" font-weight="800">{title}</text>')
-        parts.append(f'<text x="{x0+12}" y="{y0+40}" fill="#2c3e50" font-size="9.4">{body}</text>')
+    for x1, y1, title, body, fill, stroke in callouts:
+        parts.append(f'<rect x="{x1}" y="{y1}" width="270" height="48" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="1.2"/>')
+        parts.append(f'<text x="{x1+12}" y="{y1+19}" fill="#10213d" font-size="11.5" font-weight="800">{title}</text>')
+        parts.append(f'<text x="{x1+12}" y="{y1+36}" fill="#2c3e50" font-size="9.2">{body}</text>')
 
-    parts.append('<rect x="26" y="305" width="928" height="34" rx="8" fill="#f0f4fa" stroke="#d1d5db"/>')
-    parts.append('<text x="44" y="327" fill="#1a2744" font-size="15" font-weight="800">Takeaway: efficiency is a full request pipeline, not just a GPU kernel.</text>')
+    parts.append(f'<text x="26" y="344" fill="#6c7a89" font-size="10.5">Raw GPU draw: {raw_gpu_j:.0f}J. Active GPU energy subtracts estimated idle power; CPU-side energy is labeled separately.</text>')
     parts.append("</svg>")
     path.write_text("".join(parts), encoding="utf-8")
     return path
@@ -839,7 +884,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     .fig-body {{ padding:5px; }}
     .chart {{ width:100%; display:block; object-fit:contain; }}
     .chart-life {{ height:170px; }}
-    .chart-large {{ height:228px; }}
+    .chart-large {{ height:270px; }}
     .chart-xl {{ height:242px; }}
     .chart-mid {{ height:198px; }}
     .chart-small {{ height:110px; }}
@@ -947,12 +992,12 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       </div>
 
       <div class="section">
-        <div class="section-title">What Actually Happens During One LLM Request?</div>
+        <div class="section-title">Measured Energy Trace for One LLM</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline, not just a GPU kernel</span><span>FULL PIPELINE</span></div>
-          <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Request lifecycle"></div>
+          <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
+          <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Measured energy trace"></div>
         </div>
-        <p class="note">A slow or expensive call can come from tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, networking, or response parsing.</p>
+        <p class="note">This turns the abstract request trace into concrete joules, latency, GPU utilization, and VRAM for one measured LLM call.</p>
       </div>
 
       <div class="section">
@@ -973,7 +1018,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
         <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: toy score vs infrastructure cost index</span><span>SAME-FAMILY SCALING</span></div>
+          <div class="fig-caption"><span>Measured benchmark: toy/code score, energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
         <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
@@ -987,7 +1032,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
           <div class="fig-caption"><span>Measured benchmark: fp16 vs q8 vs q4 only within the same model</span><span>% OF SAME-MODEL FP16 BASELINE</span></div>
           <div class="fig-body"><img class="chart chart-xl" src="learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
         </div>
-        <div class="callout">Quantization changes representation efficiency, not the underlying model family. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment.”</div>
+        <div class="callout"><strong>How to read it:</strong> FP16 is the 100% baseline for the exact same model; q8/q4 are compressed representations. Left: costs to minimize (VRAM, energy, latency). Right: benefits to preserve or improve (throughput, toy-score retention). Bars average only complete same-model FP16/q8/q4 triplets.</div>
       </div>
     </div>
 

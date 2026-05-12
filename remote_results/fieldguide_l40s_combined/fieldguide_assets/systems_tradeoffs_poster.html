@@ -64,7 +64,7 @@
     .fig-body { padding:5px; }
     .chart { width:100%; display:block; object-fit:contain; }
     .chart-life { height:170px; }
-    .chart-large { height:228px; }
+    .chart-large { height:270px; }
     .chart-xl { height:242px; }
     .chart-mid { height:198px; }
     .chart-small { height:110px; }
@@ -172,12 +172,12 @@
       </div>
 
       <div class="section">
-        <div class="section-title">What Actually Happens During One LLM Request?</div>
+        <div class="section-title">Measured Energy Trace for One LLM</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline, not just a GPU kernel</span><span>FULL PIPELINE</span></div>
-          <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Request lifecycle"></div>
+          <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
+          <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Measured energy trace"></div>
         </div>
-        <p class="note">A slow or expensive call can come from tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, networking, or response parsing.</p>
+        <p class="note">This turns the abstract request trace into concrete joules, latency, GPU utilization, and VRAM for one measured LLM call.</p>
       </div>
 
       <div class="section">
@@ -198,7 +198,7 @@
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
         <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: toy score vs infrastructure cost index</span><span>SAME-FAMILY SCALING</span></div>
+          <div class="fig-caption"><span>Measured benchmark: toy/code score, energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
         <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
@@ -212,7 +212,7 @@
           <div class="fig-caption"><span>Measured benchmark: fp16 vs q8 vs q4 only within the same model</span><span>% OF SAME-MODEL FP16 BASELINE</span></div>
           <div class="fig-body"><img class="chart chart-xl" src="learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
         </div>
-        <div class="callout">Quantization changes representation efficiency, not the underlying model family. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment.”</div>
+        <div class="callout"><strong>How to read it:</strong> FP16 is the 100% baseline for the exact same model; q8/q4 are compressed representations. Left: costs to minimize (VRAM, energy, latency). Right: benefits to preserve or improve (throughput, toy-score retention). Bars average only complete same-model FP16/q8/q4 triplets.</div>
       </div>
     </div>
 
