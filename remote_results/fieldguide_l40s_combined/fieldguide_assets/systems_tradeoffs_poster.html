@@ -1,50 +1,292 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</title>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cost, Energy & Infrastructure Tradeoffs — Poster</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-@page { size: 84.1cm 59.4cm landscape; margin: 0; }
-body { margin:0; background:#030712; font-family:Aptos,ui-sans-serif,system-ui,sans-serif; color:#e5f1ff; }
-.poster { width:min(100vw,1580px); aspect-ratio:84.1/59.4; margin:auto; background:linear-gradient(135deg,#06101d 0%,#071625 52%,#120d21 100%); display:grid; grid-template-rows:76px 126px minmax(0,1fr) 92px; gap:8px; padding:16px; box-sizing:border-box; overflow:hidden; position:relative; }
-.poster:before { content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(96,165,250,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(96,165,250,.07) 1px,transparent 1px); background-size:28px 28px; pointer-events:none; mask-image:linear-gradient(to bottom,black,transparent 88%); }
-.poster > * { position:relative; z-index:1; }
-.header { display:grid; grid-template-columns:minmax(0,1fr) 430px; align-items:start; border-bottom:2px solid #22d3ee; padding-bottom:8px; min-width:0; }
-h1 { margin:0; font-size:29px; letter-spacing:-.02em; line-height:1.02; max-width:990px; }
-.subtitle { color:#9fb2ca; margin-top:6px; font-size:12px; }
-.thesis { color:#4ade80; font-weight:850; font-size:15px; text-align:right; line-height:1.18; }
-.thesis span { color:#9fb2ca; font-size:12px; font-weight:750; }
-.hero { display:grid; grid-template-columns:minmax(0,1fr) 308px; gap:8px; min-height:0; }
-.hero img { width:100%; height:100%; object-fit:contain; border:1px solid #23344f; border-radius:9px; background:#0d1b2f; min-height:0; }
-.kpis { display:grid; grid-template-columns:1fr 1fr; gap:7px; min-height:0; }
-.kpi { background:#0d1b2f; border:1px solid #23344f; border-radius:9px; padding:9px; overflow:hidden; }
-.kpi b { display:block; color:#22d3ee; font-size:21px; line-height:1; margin-bottom:4px; } .kpi span { color:#9fb2ca; font-size:11px; line-height:1.22; display:block; }
-.grid { display:grid; grid-template-columns:.95fr 1.22fr .95fr; gap:8px; min-height:0; overflow:hidden; }
-.col { display:grid; gap:8px; min-width:0; min-height:0; overflow:hidden; }
-.col.left { grid-template-rows:1fr .98fr; }
-.col.center { grid-template-rows:1.02fr .76fr .92fr; }
-.col.right { grid-template-rows:.92fr .92fr .72fr; }
-.panel { background:rgba(13,27,47,.92); border:1px solid #23344f; border-radius:9px; padding:7px; min-height:0; overflow:hidden; box-shadow:0 0 0 1px rgba(34,211,238,.05) inset; display:flex; flex-direction:column; }
-.panel h2 { margin:0 0 5px; font-size:12px; color:#e5f1ff; text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid #23344f; padding-bottom:5px; flex:0 0 auto; }
-.panel img { width:100%; min-height:0; height:100%; object-fit:contain; display:block; border-radius:6px; flex:1 1 auto; }
-.panel .callout { flex:0 0 auto; }
-.note { color:#9fb2ca; font-size:11px; line-height:1.32; }
-.callout { color:#facc15; font-size:12px; font-weight:850; line-height:1.18; margin-top:3px; }
-.bottom { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; min-height:0; }
-.insight { background:#0d1b2f; border:1px solid #23344f; border-radius:9px; padding:8px; font-size:10.7px; line-height:1.16; overflow:hidden; }
-.insight b { color:#4ade80; display:block; margin-bottom:3px; font-size:11.5px; }
-</style></head><body><main class="poster">
-<section class="header"><div><h1>Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads</h1><div class="subtitle">A Visual Python Field Guide for local LLM deployment, observability, and systems tradeoffs · PyCon US · Shivay Lamba / Suvrakamal Das</div></div><div class="thesis">The most accurate LLM is often not the most economically efficient one.<br><span style="color:#8aa0bd;font-size:13px;font-weight:700">Deployment is a systems engineering problem.</span></div></section>
-<section class="hero"><img src="request_lifecycle.svg" alt="request lifecycle"><div class="kpis"><div class="kpi"><b>5</b><span>isolated dimensions: size, quantization, architecture, hardware, workload</span></div><div class="kpi"><b>tokens/J</b><span>practical deployment efficiency metric</span></div><div class="kpi"><b>NVML</b><span>GPU power, VRAM, utilization traces</span></div><div class="kpi"><b>RAPL</b><span>CPU power when available; labeled estimate otherwise</span></div></div></section>
-<section class="grid">
-<div class="col left"><div class="panel"><h2>Scaling laws & diminishing returns</h2><img src="experiment_a_scaling_curves.png"></div><div class="panel"><h2>Energy vs accuracy frontier</h2><img src="energy_accuracy_frontier.png"><div class="callout">Scaling can push energy faster than quality.</div></div></div>
-<div class="col center"><div class="panel"><h2>Quantization efficiency</h2><img src="experiment_b_quantization.png"><div class="callout">4-bit quantized models often retain most quality at a fraction of memory and energy.</div></div><div class="panel"><h2>Quantization waterfall</h2><img src="experiment_b_efficiency_waterfall.png"></div><div class="panel"><h2>Architecture specialization</h2><img src="experiment_c_workload_heatmap.png"></div></div>
-<div class="col right"><div class="panel"><h2>CPU vs GPU deployment</h2><img src="experiment_d_cpu_gpu.png"></div><div class="panel"><h2>Latency waterfall</h2><img src="experiment_d_latency_waterfall.png"></div><div class="panel"><h2>System energy flow</h2><img src="experiment_e_energy_sankey.svg"></div></div>
-</section>
-<section class="bottom">
-<div class="insight"><b>1. Diminishing returns</b>Larger models frequently add cost faster than accuracy.</div>
-<div class="insight"><b>2. Quantization wins</b>Compression improves practical deployment efficiency.</div>
-<div class="insight"><b>3. Workloads differ</b>Architecture choice depends on code, chat, summary, and search patterns.</div>
-<div class="insight"><b>4. Systems problem</b>LLM deployment is infrastructure engineering, not just model selection.</div>
-<div class="insight"><b>5. Energy matters</b>Inference energy becomes operational cost when workloads repeat.</div>
-<div class="insight"><b>6. Concurrency flips economics</b>GPUs become stronger as batching and parallelism rise.</div>
-<div class="insight"><b>7. Measure locally</b>Use the notebooks and CSV pipeline to retest your own endpoints.</div>
-</section></main></body></html>
+  :root {
+    --ink: #1a1a2e;
+    --heading: #0f1b35;
+    --body: #2c3e50;
+    --muted: #6c7a89;
+    --accent: #1b3a5c;
+    --accent-light: #2a5580;
+    --blue: #1b3a5c;
+    --border: #d1d5db;
+    --bg: #ffffff;
+    --surface: #f8f9fa;
+    --green: #1a7a3a;
+    --red: #c0392b;
+    --orange: #d97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #e5e7eb; font-family: "Inter", system-ui, sans-serif; color: var(--body); -webkit-font-smoothing: antialiased; }
+  code { font-family: "JetBrains Mono", monospace; font-size: .88em; background: #f0f0f0; padding: 1px 4px; border-radius: 2px; }
+  .poster { width: min(100vw - 16px, 1580px); aspect-ratio: 84.1 / 59.4; margin: 8px auto; background: var(--bg); box-shadow: 0 4px 20px rgba(0,0,0,.12); overflow: hidden; display: flex; flex-direction: column; }
+  @page { size: 84.1cm 59.4cm landscape; margin: 0; }
+  @media print {
+    body { background: #fff; margin: 0; padding: 0; }
+    .poster { width: 84.1cm; height: 59.4cm; margin: 0; box-shadow: none; aspect-ratio: auto; }
+    .poster * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  .header { background: #1a2744; padding: 12px 24px; display: flex; align-items: center; gap: 16px; color: #fff; position: relative; overflow: hidden; flex-shrink: 0; }
+  .header .logo-area { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; z-index: 1; min-width: 210px; }
+  .py-box { width: 52px; height: 52px; border: 1.5px solid rgba(255,255,255,.55); border-radius: 6px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; }
+  .conf-label { font-size: 13px; font-weight: 700; line-height: 1.25; letter-spacing: .01em; }
+  .conf-label small { display: block; font-size: 9px; font-weight: 500; opacity: .8; text-transform: uppercase; letter-spacing:.08em; }
+  .header .center { flex: 1; text-align: center; z-index: 1; min-width: 0; }
+  .header h1 { font-size: clamp(14px, 1.48vw, 20px); font-weight: 800; line-height: 1.18; letter-spacing: -.01em; }
+  .header .authors { font-size: 10.5px; margin-top: 4px; opacity: .95; font-weight: 600; }
+  .header .affiliations { font-size: 9px; margin-top: 2px; opacity: .78; }
+  .body { display: grid; grid-template-columns: 1fr 1.12fr 1fr; gap: 0; padding: 0; flex: 1; min-height: 0; }
+  .col { padding: 10px 14px 12px; border-right: 1.5px solid var(--border); overflow: hidden; }
+  .col:last-child { border-right: none; }
+  .section { margin-bottom: 6px; }
+  .section:last-child { margin-bottom: 0; }
+  .section-title { font-size: 12px; font-weight: 800; text-transform: uppercase; color: var(--accent); letter-spacing: .04em; padding-bottom: 3px; border-bottom: 2px solid var(--accent); margin-bottom: 6px; }
+  .section-title.blue { color: var(--blue); border-bottom-color: var(--blue); }
+  h3 { font-size: 11px; font-weight: 700; color: var(--heading); margin: 6px 0 3px; }
+  h3:first-child { margin-top: 0; }
+  p, li { font-size: 9.2px; line-height: 1.36; color: var(--body); }
+  ul, ol { padding-left: 14px; margin: 3px 0 6px; }
+  li { margin-bottom: 2px; }
+  strong { color: var(--ink); }
+  .figure { border: 1.5px solid var(--border); border-radius: 4px; margin: 4px 0; overflow: hidden; }
+  .fig-caption { background: var(--surface); padding: 4px 10px; font-size: 9px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }
+  .fig-body { padding: 5px; }
+  .fig-body.tight { padding: 3px 5px; }
+  .chart { width: 100%; object-fit: contain; display: block; }
+  .chart-xs { height: 68px; }
+  .chart-sm { height: 90px; }
+  .chart-md { height: 118px; }
+  .chart-lg { height: 142px; }
+  .chart-xl { height: 166px; }
+  .stack { display: flex; flex-direction: column; gap: 0; }
+  .stack-row { display: flex; align-items: stretch; border: 1px solid var(--border); border-bottom: none; font-size: 9.5px; line-height: 1.35; }
+  .stack-row:last-child { border-bottom: 1px solid var(--border); }
+  .stack-tag { flex: 0 0 78px; min-width: 78px; max-width: 78px; padding: 4px 5px; font-size: 7px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; text-align: center; }
+  .stack-desc { flex: 1; padding: 4px 6px; }
+  .tag-fixtures { background: #dbeafe; color: #1e3a8a; }
+  .tag-client { background: #dcfce7; color: #14532d; }
+  .tag-energy { background: #fff7ed; color: #9a3412; }
+  .tag-visual { background: #f3e8ff; color: #581c87; }
+  .algo-box { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font-size: 9.5px; line-height: 1.4; margin: 6px 0; }
+  .algo-box .algo-title { font-weight: 700; font-size: 9.5px; color: var(--heading); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .algo-box code { background: transparent; padding: 0; }
+  table { width: 100%; font-size: 8px; border-collapse: collapse; margin: 4px 0; }
+  th, td { border: 1px solid var(--border); padding: 2.4px 4px; text-align: center; }
+  th { background: var(--surface); font-weight: 700; font-size: 7.8px; color: var(--heading); }
+  td:first-child { text-align: left; font-weight: 600; }
+  .best { font-weight: 700; color: var(--green); }
+  .dim { color: var(--muted); }
+  .chips { display:flex; flex-wrap:wrap; gap:3px; margin: 4px 0 3px; }
+  .chips span { border:1px solid var(--border); background:#fff8d8; border-radius:12px; padding:2px 6px; font:700 7px "JetBrains Mono",monospace; color:#1f2937; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin:6px 0; }
+  .kpi { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:6px; min-height:52px; }
+  .kpi b { display:block; color:var(--accent); font-size:18px; line-height:1; margin-bottom:3px; }
+  .kpi span { display:block; color:var(--muted); font-size:8px; line-height:1.25; }
+  .callout { background: #f0f4fa; border-left: 3px solid var(--accent); padding: 4px 7px; font-size: 8.8px; line-height: 1.28; margin: 4px 0; border-radius: 0 3px 3px 0; }
+  .note { font-size: 8px; color: var(--muted); line-height: 1.28; margin-top: 3px; }
+  .footer { border-top: 1.5px solid var(--border); padding: 6px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; }
+  .footer .refs { font-size: 8.5px; line-height: 1.35; color: var(--muted); flex: 1; }
+  .footer .refs strong { color: var(--heading); font-size: 9px; }
+  .footer .refs a { color: var(--blue); text-decoration: none; }
+  .footer .qr-slot { flex: 0 0 auto; width: 60px; height: 60px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700; color: var(--muted); text-transform: uppercase; text-align:center; }
+  .conf-bar { background: var(--heading); color: #8899aa; font-size: 8.5px; padding: 4px 16px; display: flex; justify-content: space-between; flex-shrink: 0; }
+  .conf-bar a { color: #8ecae6; text-decoration: none; }
+  hr.sec-sep { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
+</style>
+</head>
+<body>
+<div class="poster" contenteditable="false">
+  <div class="header">
+    <div class="logo-area">
+      <div class="py-box">Py</div>
+      <div class="conf-label">PyCon US<br><small>Poster Session</small></div>
+    </div>
+    <div class="center">
+      <h1>Cost, Energy &amp; Infrastructure Tradeoffs of Everyday LLM Workloads:<br>A Visual Python Field Guide</h1>
+      <div class="authors">Shivay Lamba &nbsp;&nbsp; Suvrakamal Das</div>
+      <div class="affiliations">Python scripts, notebooks, Ollama, Hugging Face models, NVML, pandas, matplotlib, Plotly</div>
+    </div>
+    <div class="logo-area" style="visibility:hidden;">
+      <div class="py-box">Py</div>
+      <div class="conf-label">PyCon US<br><small>Poster Session</small></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="col">
+      <div class="section">
+        <div class="section-title">Overview</div>
+        <p>
+          Generative AI is everywhere, but the cost and energy impact of everyday LLM calls is usually hidden in dashboards, invoices, and GPU logs.
+          This poster turns those numbers into a reproducible Python field guide for choosing local models and hardware.
+        </p>
+        <p style="margin-top:4px;">
+          We profile <strong>code generation</strong>, <strong>document summarization</strong>, <strong>chat completion</strong>, <strong>semantic/RAG search</strong>, and <strong>batch embeddings</strong> across model sizes, quantization levels, architectures, and CPU/GPU configurations.
+        </p>
+        <div class="callout"><strong>Thesis:</strong> the most accurate LLM is often not the most economically efficient one. LLM deployment is a systems engineering problem, not just a model selection problem.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Benchmark Scope</div>
+        <div class="kpis">
+          <div class="kpi"><b>19</b><span>models / variants</span></div>
+          <div class="kpi"><b>5</b><span>workload families</span></div>
+          <div class="kpi"><b>234</b><span>raw metric rows</span></div>
+          <div class="kpi"><b>NVIDIA L40S</b><span>datacenter GPU run</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Dimension</th><th>Isolated Effect</th><th>Examples</th></tr></thead>
+          <tbody>
+            <tr><td>Model size</td><td>parameter count</td><td>Gemma 2B/7B, Phi-3 3.8B/14B</td></tr>
+            <tr><td>Quantization</td><td>precision + compression</td><td>q4, q8, fp16</td></tr>
+            <tr><td>Architecture</td><td>training and specialization</td><td>Mistral, CodeLlama, DeepSeek Coder</td></tr>
+            <tr><td>Hardware</td><td>deployment practicality</td><td>CPU-only vs NVIDIA L40S</td></tr>
+            <tr><td>Workload</td><td>request shape</td><td>chat, summary, code, search, embeddings</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">Measurement Pipeline</div>
+        <div class="stack">
+          <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Deterministic prompts for code, docs, chat, labels, search documents, and embedding batches.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama / OpenAI-compatible adapter with row-level request logs and repeatable model registry.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM; CPU uses RAPL when exposed or a labeled utilization/TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas summaries generate scaling curves, frontiers, heatmaps, waterfalls, timelines, and poster-ready assets.</div></div>
+        </div>
+        <p class="note">For Ollama, tokenization is reported as prompt evaluation / prefill because the server does not expose a pure tokenizer-only timer.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Models Tried</div>
+        <div class="chips"><span>CodeLlama 7B FP16</span><span>CodeLlama 7B Q4</span><span>CodeLlama 7B Q8</span><span>CodeLlama 13B Q4</span><span>DeepSeek Coder 6.7B Q4</span><span>Gemma 2B Q4</span><span>Gemma 7B FP16</span><span>Gemma 7B Q4</span><span>Gemma 7B Q8</span><span>Granite Code 3B Q4</span><span>Granite Code 8B Q4</span><span>Granite Code 20B Q4</span><span>Mistral 7B Q4</span><span>Nomic Embed Text</span><span>Phi-3 3.8B Q4</span><span>Phi-3 14B FP16</span><span>Phi-3 14B Q4</span><span>Phi-3 14B Q8</span><span>mxbai Embed Large</span></div>
+        <p class="note">The same code supports additional Ollama, vLLM, Hugging Face, and API-compatible endpoints.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">Scaling Laws</div>
+        <div class="figure">
+          <div class="fig-caption"><span>Experiment A - same architecture, different sizes</span><span>quality + joules</span></div>
+          <div class="fig-body tight"><img class="chart chart-xs" src="experiment_a_scaling_curves.png" alt="Scaling curves"></div>
+        </div>
+        <div class="figure">
+          <div class="fig-caption"><span>Energy vs accuracy frontier</span><span>tokens-per-joule lens</span></div>
+          <div class="fig-body tight"><img class="chart chart-xs" src="energy_accuracy_frontier.png" alt="Energy accuracy frontier"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="section">
+        <div class="section-title">What Happens During One LLM Request?</div>
+        <p>Each request moves through CPU preparation, serving overhead, GPU inference, KV-cache growth, sampling, and response parsing. The benchmark records row-level traces instead of one opaque latency number.</p>
+        <div class="figure">
+          <div class="fig-caption"><span>Request lifecycle observability view</span><span>hardware + latency + energy</span></div>
+          <div class="fig-body tight"><img class="chart chart-md" src="request_lifecycle.svg" alt="Request lifecycle"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">Quantization Efficiency</div>
+        <p>Precision is a deployment lever: it changes VRAM pressure, memory traffic, latency, and energy before application code changes.</p>
+        <div class="figure">
+          <div class="fig-caption"><span>Experiment B - same model, different quantization</span><span>VRAM + energy + tokens/J</span></div>
+          <div class="fig-body tight"><img class="chart chart-lg" src="experiment_b_quantization.png" alt="Quantization efficiency"></div>
+        </div>
+        <div class="callout"><strong>Field heuristic:</strong> 4-bit quantized models often retain useful quality at a fraction of the memory and active energy cost.</div>
+        <div class="figure">
+          <div class="fig-caption"><span>Quantization efficiency waterfall</span><span>q4 savings vs fp16</span></div>
+          <div class="fig-body tight"><img class="chart chart-sm" src="experiment_b_efficiency_waterfall.png" alt="Quantization waterfall"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Architecture &amp; Workload Specialization</div>
+        <p>
+          Similar-size models do not behave the same. Coding, chat, summarization, and semantic search stress different parts of the stack and different training priors.
+        </p>
+        <div class="figure">
+          <div class="fig-caption"><span>Experiment C - same size, different architecture</span><span>workload matrix</span></div>
+          <div class="fig-body tight"><img class="chart chart-md" src="experiment_c_workload_heatmap.png" alt="Architecture heatmap"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col">
+      <div class="section">
+        <div class="section-title">CPU vs GPU Deployment</div>
+        <p>
+          CPU rows force Ollama with <code>num_gpu=0</code>; GPU rows let Ollama place the model on NVIDIA L40S. This isolates practical hardware deployment tradeoffs for the same benchmark code.
+        </p>
+        <div class="figure">
+          <div class="fig-caption"><span>Experiment D - throughput</span><span>CPU-only vs GPU</span></div>
+          <div class="fig-body tight"><img class="chart chart-sm" src="experiment_d_cpu_gpu.png" alt="CPU GPU throughput"></div>
+        </div>
+        <table>
+          <thead><tr><th>Workload / Model</th><th>CPU</th><th>GPU</th><th>Takeaway</th></tr></thead>
+          <tbody><tr><td>CodeLlama 7B chat</td><td>15.44s / 1039J</td><td class="best">1.00s / 244J</td><td>15.4x faster on GPU</td></tr><tr><td>CodeLlama 7B summarize</td><td>17.71s / 1181J</td><td class="best">1.07s / 268J</td><td>16.6x faster on GPU</td></tr><tr><td>CodeLlama 7B RAG query</td><td>4.16s / 297J</td><td class="best">1.22s / 117J</td><td>3.4x faster on GPU</td></tr><tr><td>CodeLlama 7B code</td><td>22.57s / 1336J</td><td class="best">2.10s / 334J</td><td>10.8x faster on GPU</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">Latency &amp; Energy Flow</div>
+        <div class="figure">
+          <div class="fig-caption"><span>CPU vs GPU waterfall latency</span><span>network + prefill + inference + post</span></div>
+          <div class="fig-body tight"><img class="chart chart-sm" src="experiment_d_latency_waterfall.png" alt="Latency waterfall"></div>
+        </div>
+        <div class="figure">
+          <div class="fig-caption"><span>Full-system energy flow</span><span>request lifecycle</span></div>
+          <div class="fig-body tight"><img class="chart chart-xs" src="experiment_e_energy_sankey.svg" alt="Energy flow"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Energy Accounting</div>
+        <table>
+          <thead><tr><th>Metric</th><th>How It Is Calculated</th><th>Use</th></tr></thead>
+          <tbody>
+            <tr><td><code>gpu_energy_j</code></td><td>integrated NVML watts over request time</td><td>raw device draw</td></tr>
+            <tr><td><code>net_gpu_energy_j</code></td><td>GPU joules minus idle baseline x elapsed</td><td>active inference view</td></tr>
+            <tr><td><code>cpu_energy_j</code></td><td>RAPL if available, otherwise TDP x utilization x time</td><td>CPU rows</td></tr>
+            <tr><td><code>tokens/J</code></td><td>tokens divided by active device joules</td><td class="best">best field metric</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Practical Heuristics</div>
+        <table>
+          <tbody>
+            <tr><td>Benchmark workloads, not model cards.</td><td>Chat, code, RAG, and embeddings stress different bottlenecks.</td></tr>
+            <tr><td>Quantization is infrastructure.</td><td>It reduces memory movement and often improves tokens per joule.</td></tr>
+            <tr><td>GPUs win with concurrency.</td><td>Small one-off calls hide GPU benefits; batches reveal them.</td></tr>
+            <tr><td>Keep two energy views.</td><td>Raw energy for facility cost, net active energy for model comparison.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="refs">
+      <strong>Artifacts:</strong> reproducible Python benchmark framework, configs, notebooks, CSV metrics, NVML power traces, generated PNG/SVG assets, and this printable poster.<br>
+      <strong>Open repository:</strong> <a href="https://github.com/shivaylamba/pycon-2026-poster">github.com/shivaylamba/pycon-2026-poster</a>
+      &nbsp;|&nbsp; <strong>Inspired by:</strong> Alizadeh et al., <em>Language Models in Software Development Tasks: An Experimental Analysis of Energy and Accuracy</em>, arXiv:2412.00329.
+    </div>
+    <div class="qr-slot">QR<br>repo</div>
+  </div>
+  <div class="conf-bar">
+    <span>PyCon US Poster Session</span>
+    <span>Python scripts + pandas + matplotlib + Plotly + Ollama + NVML</span>
+  </div>
+</div>
+</body>
+</html>
