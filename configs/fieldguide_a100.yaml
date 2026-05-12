@@ -1,6 +1,6 @@
-name: pycon-systems-field-guide-a100
+name: pycon-systems-field-guide-gpu
 hardware_profiles:
-  - a100_gpu
+  - l40s_gpu
   - cpu
 experiments:
   - A

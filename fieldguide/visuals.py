@@ -78,6 +78,14 @@ def add_energy_views(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def primary_gpu_profile(df: pd.DataFrame) -> str:
+    profiles = [p for p in df.get("hardware_profile", pd.Series(dtype=str)).dropna().unique().tolist() if p != "cpu"]
+    for preferred in ("l40s_gpu", "a100_gpu", "datacenter_gpu", "consumer_gpu"):
+        if preferred in profiles:
+            return preferred
+    return profiles[0] if profiles else "a100_gpu"
+
+
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
     group = ["model_id", "model_label", "family", "architecture", "params_b", "quantization", "precision_bits", "hardware_profile", "workload"]
     numeric = [
@@ -118,7 +126,8 @@ def blank(path: Path, title: str, message: str = "Run the benchmark to populate 
 
 
 def plot_scaling(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.quantization == "q4") & (summary.workload == "code_generation")]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.quantization == "q4") & (summary.workload == "code_generation")]
     if data.empty:
         return blank(path, "Experiment A: Scaling Curves")
     fig, ax1 = plt.subplots(figsize=(8.5, 4.2))
@@ -143,7 +152,8 @@ def plot_scaling(summary: pd.DataFrame, path: Path) -> Path:
 
 
 def plot_frontier(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.workload == "code_generation")]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.workload == "code_generation")]
     if data.empty:
         return blank(path, "Energy vs Accuracy Frontier")
     fig, ax = plt.subplots(figsize=(8.5, 4.2))
@@ -158,7 +168,8 @@ def plot_frontier(summary: pd.DataFrame, path: Path) -> Path:
 
 
 def plot_quantization(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.workload == "code_generation") & (summary.quantization.isin(["q4", "q8", "fp16"]))]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.workload == "code_generation") & (summary.quantization.isin(["q4", "q8", "fp16"]))]
     data = data[data.family.isin(["Gemma", "Phi3", "CodeLlama"])]
     if data.empty:
         return blank(path, "Experiment B: Quantization Efficiency")
@@ -181,7 +192,8 @@ def plot_quantization(summary: pd.DataFrame, path: Path) -> Path:
 
 
 def plot_quant_waterfall(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.workload == "code_generation")]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.workload == "code_generation")]
     data = data[data.family.isin(["Gemma", "Phi3", "CodeLlama"]) & data.quantization.isin(["q4", "fp16"])]
     pairs = []
     for family, sub in data.groupby(["family", "params_b"], dropna=False):
@@ -211,7 +223,8 @@ def plot_quant_waterfall(summary: pd.DataFrame, path: Path) -> Path:
 
 
 def plot_heatmap(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.params_b.between(6.0, 8.0))]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.params_b.between(6.0, 8.0))]
     pivot = data.pivot_table(index="model_label", columns="workload", values="score", aggfunc="mean").fillna(0)
     if pivot.empty:
         return blank(path, "Experiment C: Workload Specialization Matrix")
@@ -229,7 +242,8 @@ def plot_heatmap(summary: pd.DataFrame, path: Path) -> Path:
 
 
 def plot_radar(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.params_b.between(6.0, 8.0))]
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.params_b.between(6.0, 8.0))]
     metrics = data.groupby("model_label").agg(score=("score", "mean"), speed=("tokens_per_sec", "mean"), efficiency=("active_tokens_per_joule", "mean")).fillna(0)
     if metrics.empty:
         return blank(path, "Architecture Radar")
@@ -265,8 +279,9 @@ def plot_cpu_gpu(summary: pd.DataFrame, path: Path) -> Path:
     dark_ax(ax)
     x = np.arange(len(pivot.index))
     width = 0.35
+    gpu = primary_gpu_profile(summary)
     ax.bar(x - width / 2, pivot.get("cpu", pd.Series(0, index=pivot.index)), width, label="CPU", color=NEON["yellow"])
-    ax.bar(x + width / 2, pivot.get("a100_gpu", pd.Series(0, index=pivot.index)), width, label="A100", color=NEON["cyan"])
+    ax.bar(x + width / 2, pivot.get(gpu, pd.Series(0, index=pivot.index)), width, label=gpu.replace("_", " ").upper(), color=NEON["cyan"])
     ax.set_xticks(x, pivot.index, rotation=20, ha="right")
     ax.set_ylabel("tokens/sec or items/sec")
     ax.set_title("Experiment D: CPU vs GPU Throughput")
@@ -348,7 +363,8 @@ def plot_power_timeline(results_dir: Path, path: Path) -> Path:
 
 
 def plot_latency_trace(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[(summary.hardware_profile == "a100_gpu") & (summary.workload == "chat_completion")].sort_values("total_latency_s").tail(8)
+    gpu = primary_gpu_profile(summary)
+    data = summary[(summary.hardware_profile == gpu) & (summary.workload == "chat_completion")].sort_values("total_latency_s").tail(8)
     fig, ax = plt.subplots(figsize=(8.5, 3.7))
     dark_ax(ax)
     ax.barh(data["model_label"], data["total_latency_s"], color=NEON["blue"])

@@ -21,7 +21,7 @@ It benchmarks five independent deployment dimensions:
 - **D: hardware**: CPU-only vs A100 GPU, with consumer GPU profiles supported by the same code
 - **E: system flow**: request lifecycle, power traces, memory movement, and energy accounting
 
-Run it on a Lightning.ai A100 VM:
+Run it on a Lightning.ai GPU VM:
 
 ```bash
 cd /home/zeus/pycon_llm_cost_energy
@@ -33,27 +33,27 @@ python scripts/fieldguide_pull_models.py --experiment all --include-embeddings
 
 python scripts/fieldguide_run.py \
   --experiment all \
-  --hardware a100_gpu \
-  --out results/fieldguide_a100_all \
-  --limit 2 \
+  --hardware l40s_gpu \
+  --out results/fieldguide_l40s_all \
+  --limit 3 \
   --repeats 1 \
   --skip-pull \
   --save-traces
 
 python scripts/fieldguide_run.py \
   --experiment D \
-  --hardware a100_gpu,cpu \
+  --hardware l40s_gpu,cpu \
   --models codellama-7b-q4 \
-  --out results/fieldguide_cpu_gpu_d \
-  --limit 2 \
+  --out results/fieldguide_l40s_cpu_gpu_d \
+  --limit 3 \
   --repeats 1 \
   --skip-pull \
   --save-traces
 
 python scripts/fieldguide_concurrency.py \
   --model codellama-7b-q4 \
-  --hardware a100_gpu,cpu \
-  --out results/fieldguide_cpu_gpu_d \
+  --hardware l40s_gpu,cpu \
+  --out results/fieldguide_l40s_cpu_gpu_d \
   --levels 1,2,4
 ```
 
@@ -62,8 +62,8 @@ The final visualization pass expects a `metrics.csv` plus optional
 
 ```bash
 python scripts/fieldguide_make_visuals.py \
-  --results results/fieldguide_a100_all \
-  --out results/fieldguide_a100_all/fieldguide_assets
+  --results results/fieldguide_l40s_all \
+  --out results/fieldguide_l40s_all/fieldguide_assets
 ```
 
 It writes the dark observability-style printable poster to

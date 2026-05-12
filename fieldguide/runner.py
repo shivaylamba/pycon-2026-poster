@@ -17,6 +17,9 @@ from .workloads import embedding_items, evaluate_embedding_search, evaluate_gene
 
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
     "a100_gpu": {"label": "A100 GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "l40s_gpu": {"label": "L40S GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "datacenter_gpu": {"label": "Datacenter GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "consumer_gpu": {"label": "Consumer GPU", "ollama_options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
     "cpu": {"label": "CPU only", "ollama_options": {"num_gpu": 0}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
 }
 
@@ -284,7 +287,7 @@ def summarize(metrics: pd.DataFrame) -> pd.DataFrame:
 
 def estimate_cost(elapsed_s: float, energy_j: Optional[float], hw_name: str) -> float:
     electricity = ((energy_j or 0.0) / 3_600_000.0) * 0.18
-    hourly = {"a100_gpu": 2.50, "cpu": 0.20}.get(hw_name, 0.0)
+    hourly = {"a100_gpu": 2.50, "l40s_gpu": 1.50, "datacenter_gpu": 2.00, "consumer_gpu": 0.50, "cpu": 0.20}.get(hw_name, 0.0)
     return electricity + hourly * (elapsed_s / 3600.0)
 
 
