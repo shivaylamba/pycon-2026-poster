@@ -32,20 +32,26 @@
     h1 { font-size:clamp(16px,1.7vw,24px); line-height:1.12; font-weight:800; letter-spacing:-.01em; }
     .authors { font-size:10.5px; margin-top:4px; opacity:.95; font-weight:600; }
     .affiliations { font-size:9px; margin-top:2px; opacity:.78; }
+    .glance-row { display:grid; grid-template-columns:132px repeat(4,1fr); gap:8px; padding:6px 16px; border-bottom:1.5px solid var(--border); background:#fbfcff; flex-shrink:0; align-items:stretch; }
+    .glance-label { display:flex; align-items:center; color:var(--accent); font-size:12px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+    .glance-card { border:1px solid var(--border); border-radius:5px; background:#ffffff; padding:6px 9px; min-height:52px; }
+    .glance-card b { display:block; color:var(--heading); font-size:13px; line-height:1.05; margin-bottom:4px; }
+    .glance-card span { display:block; color:var(--body); font-size:8.7px; line-height:1.24; }
     .body { display:grid; grid-template-columns:.92fr 1.12fr 1fr; flex:1; min-height:0; }
-    .col { padding:11px 15px 12px; border-right:1.5px solid var(--border); overflow:hidden; }
+    .col { padding:10px 14px 11px; border-right:1.5px solid var(--border); overflow:hidden; }
     .col:last-child { border-right:none; }
     .section { margin-bottom:8px; }
     .section-title { font-size:12px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:3px; border-bottom:2px solid var(--accent); margin-bottom:6px; }
     .section-title.blue { color:var(--blue); border-bottom-color:var(--blue); }
+    .badge { display:inline-flex; align-items:center; gap:4px; background:#eef4ff; border:1px solid #c7d7f2; color:#1b3a5c; border-radius:999px; padding:2px 7px; font-size:7.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:4px; }
     .learning-title { font-size:15px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }
     .tagline { font-size:10.2px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }
     p, li { font-size:9.4px; line-height:1.37; color:var(--body); }
     strong { color:var(--ink); }
     ul { padding-left:14px; margin:4px 0; }
     li { margin-bottom:2px; }
-    table { width:100%; border-collapse:collapse; font-size:8.2px; margin:4px 0; }
-    th, td { border:1px solid var(--border); padding:2.6px 4px; text-align:center; }
+    table { width:100%; border-collapse:collapse; font-size:7.9px; margin:4px 0; }
+    th, td { border:1px solid var(--border); padding:2.2px 4px; text-align:center; }
     th { background:var(--surface); color:var(--heading); font-weight:700; }
     td:first-child { text-align:left; font-weight:700; }
     .best { color:var(--green); font-weight:800; }
@@ -57,16 +63,22 @@
     .fig-caption { background:var(--surface); padding:4px 9px; font-size:8.8px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }
     .fig-body { padding:5px; }
     .chart { width:100%; display:block; object-fit:contain; }
-    .chart-life { height:220px; }
-    .chart-large { height:258px; }
-    .chart-xl { height:292px; }
-    .chart-mid { height:230px; }
-    .chart-small { height:145px; }
+    .chart-life { height:170px; }
+    .chart-large { height:228px; }
+    .chart-xl { height:242px; }
+    .chart-mid { height:198px; }
+    .chart-small { height:110px; }
     .callout { background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.4px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }
+    .caution { background:#fff7ed; border-left:3px solid var(--orange); }
     .score-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }
     .score-card { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:54px; }
     .score-card b { display:block; color:var(--heading); font-size:8.8px; margin-bottom:2px; }
     .score-card span { display:block; color:var(--body); font-size:7.8px; line-height:1.25; }
+    .choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:5px 0; }
+    .choice-box { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:5px 6px; min-height:58px; }
+    .choice-box b { display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }
+    .choice-box ul { margin:0; padding-left:13px; }
+    .choice-box li { font-size:7.4px; line-height:1.15; margin-bottom:0; }
     .decision { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px; }
     .decision div { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:58px; }
     .decision b { display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }
@@ -99,13 +111,21 @@
     <div class="logo-area" style="visibility:hidden"><div class="py-box">Py</div><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
   </div>
 
+  <div class="glance-row">
+    <div class="glance-label">Results<br>at a Glance</div>
+    <div class="glance-card"><b>Bigger ≠ Better</b><span>Scaling model size often raises energy, latency, and VRAM faster than toy-task quality.</span></div>
+    <div class="glance-card"><b>Quantization Changes Economics</b><span>q4/q8 variants can cut memory and energy enough to change where models can run.</span></div>
+    <div class="glance-card"><b>No Single Winner</b><span>The best model depends on workload: code, summary, chat, RAG, or embeddings.</span></div>
+    <div class="glance-card"><b>Hardware Depends on Scale</b><span>CPU can be fine for tiny local jobs; GPU wins when batching or concurrency grows.</span></div>
+  </div>
+
   <div class="body">
     <div class="col">
       <div class="section">
         <div class="section-title">Overview</div>
         <p>Everyday LLM calls look simple from Python, but the real deployment decision is a tradeoff between <strong>quality</strong>, <strong>latency</strong>, <strong>VRAM</strong>, <strong>energy</strong>, and <strong>cost</strong>.</p>
         <p style="margin-top:4px;">We benchmark code generation, summarization, chat, RAG-style search, and embeddings across model sizes, quantization levels, architectures, and CPU/GPU configurations.</p>
-        <div class="callout"><strong>How to read this poster:</strong> choose along three axes: model size, quantization, and workload/system fit.</div>
+        <div class="callout"><strong>Thesis:</strong> the most accurate LLM is often not the most economically efficient one. LLM deployment is a systems engineering problem, not just model selection.</div>
       </div>
 
       <div class="section">
@@ -128,21 +148,36 @@
 
       <div class="section">
         <div class="section-title blue">Measurement Pipeline</div>
+        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, and workload score.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter writes one tidy metric row per request.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib turn traces into poster-ready figures.</div></div>
         </div>
+        <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
       </div>
 
       <div class="section">
-        <div class="section-title">What Happens During One LLM Request?</div>
+        <div class="section-title">What Gets Timed</div>
+        <table>
+          <thead><tr><th>Slice</th><th>Meaning</th><th>Why Python Devs Care</th></tr></thead>
+          <tbody>
+            <tr><td>Network</td><td>client call overhead</td><td>endpoint placement, batching</td></tr>
+            <tr><td>Tokenization</td><td>prompt processing / prefill</td><td>long docs are not free</td></tr>
+            <tr><td>Inference</td><td>model generation</td><td>model size dominates</td></tr>
+            <tr><td>Post-processing</td><td>parse, serialize, rank</td><td>pipeline glue is measurable</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">What Actually Happens During One LLM Request?</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline</span><span>CPU + memory + GPU + response</span></div>
+          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline, not just a GPU kernel</span><span>FULL PIPELINE</span></div>
           <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Request lifecycle"></div>
         </div>
-        <p class="note">A slow or expensive call can be caused by tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, or post-processing.</p>
+        <p class="note">A slow or expensive call can come from tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, networking, or response parsing.</p>
       </div>
 
       <div class="section">
@@ -158,61 +193,68 @@
 
     <div class="col">
       <div class="section">
-        <div class="section-title">Learning 1</div>
-        <div class="learning-title">Bigger Models Have Diminishing Returns</div>
+        <div class="section-title">Learning 1: Bigger Models Have Diminishing Returns</div>
+        <div class="badge">SAME ARCHITECTURE · DIFFERENT SIZES</div>
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
+        <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: quality can flatten while joules, latency, and VRAM keep rising</span><span>same-family scaling</span></div>
+          <div class="fig-caption"><span>Measured benchmark: toy score vs infrastructure cost index</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
         <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
       </div>
 
       <div class="section">
-        <div class="section-title">Learning 2</div>
-        <div class="learning-title">Quantization Changes the Economics of AI</div>
-        <div class="tagline">4-bit models often preserve useful intelligence at a fraction of infrastructure cost.</div>
+        <div class="section-title">Learning 2: Quantization Changes the Economics of AI</div>
+        <div class="badge">SAME MODEL · DIFFERENT PRECISION</div>
+        <div class="tagline">4-bit and 8-bit models often retain useful quality while reducing memory, energy, and latency.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Left = costs to minimize; right = benefits to preserve</span><span>% of same-model FP16 baseline</span></div>
+          <div class="fig-caption"><span>Measured benchmark: fp16 vs q8 vs q4 only within the same model</span><span>% OF SAME-MODEL FP16 BASELINE</span></div>
           <div class="fig-body"><img class="chart chart-xl" src="learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
         </div>
-        <div class="callout">Takeaway: quantization is not just a speed trick. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment,” while toy-task scores usually stay in the same range.</div>
+        <div class="callout">Quantization changes representation efficiency, not the underlying model family. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment.”</div>
       </div>
     </div>
 
     <div class="col">
       <div class="section">
-        <div class="section-title">Learning 3</div>
-        <div class="learning-title">No Single Model Wins Every Workload</div>
+        <div class="section-title">Learning 3: No Single Model Wins Every Workload</div>
+        <div class="badge">SIMILAR SIZE · DIFFERENT ARCHITECTURES / WORKLOADS</div>
         <div class="tagline">The efficient model depends on whether you are doing code, summaries, chat, RAG, or embeddings.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: best score and best efficiency can be different models</span><span>same hardware, different workload</span></div>
+          <div class="fig-caption"><span>Measured benchmark: workload-specialization matrix</span><span>SIMILAR-SIZE Q4 MODELS</span></div>
           <div class="fig-body"><img class="chart chart-mid" src="learning3_workload_specialization.png" alt="Workload specialization"></div>
         </div>
-        <p class="note">Read each card as a deployment choice: the first line is the highest toy-task result, the second line is the model that produced the most active tokens per joule.</p>
+        <div class="callout">“Best model” is the wrong question. Ask: best model for which workload, on which hardware, under what latency and energy budget?</div>
       </div>
 
       <div class="section">
-        <div class="section-title blue">System Proof Point</div>
+        <div class="section-title blue">CPU vs GPU: The Scale Inflection Point</div>
+        <div class="badge">HARDWARE SCALE · CONCEPTUAL HEURISTIC</div>
+        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not the same as throughput.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: hardware changes practicality once throughput matters</span><span>CPU-only vs GPU</span></div>
+          <div class="fig-caption"><span>Conceptual deployment heuristic, not measured concurrency data</span><span>CPU-ONLY VS GPU + BATCHING</span></div>
           <div class="fig-body"><img class="chart chart-small" src="learning3_cpu_gpu_tradeoff.png" alt="CPU GPU tradeoff"></div>
         </div>
-        <table>
-          <thead><tr><th>Workload</th><th>Latency Shift</th><th>Result</th></tr></thead>
-          <tbody><tr><td>Chat</td><td>15.4s CPU → <strong>1.0s GPU</strong></td><td class="best">15.4x faster</td></tr><tr><td>Summary</td><td>17.7s CPU → <strong>1.1s GPU</strong></td><td class="best">16.6x faster</td></tr><tr><td>Code</td><td>22.6s CPU → <strong>2.1s GPU</strong></td><td class="best">10.8x faster</td></tr><tr><td>RAG</td><td>4.2s CPU → <strong>1.2s GPU</strong></td><td class="best">3.4x faster</td></tr></tbody>
-        </table>
+        <div class="choice-grid">
+          <div class="choice-box"><b>CPU is reasonable for</b><ul><li>prototyping</li><li>local scripts</li><li>tiny embedding jobs</li><li>single-user offline tools</li><li>low request volume</li></ul></div>
+          <div class="choice-box"><b>GPU becomes better for</b><ul><li>long prompts / outputs</li><li>batch embeddings</li><li>multi-user chat</li><li>latency-sensitive services</li><li>high concurrency</li></ul></div>
+        </div>
+        <p class="note"><strong>Tiny embedding jobs may not amortize GPU overhead.</strong> Measure batch size before assuming the GPU path wins.</p>
       </div>
 
       <div class="section">
-        <div class="section-title">How To Choose</div>
+        <div class="section-title">Practical Heuristics</div>
         <table>
-          <thead><tr><th>If You See...</th><th>Choose...</th></tr></thead>
+          <thead><tr><th>#</th><th>Heuristic</th></tr></thead>
           <tbody>
-            <tr><td>quality barely improves but joules rise</td><td class="best">smaller model</td></tr>
-            <tr><td>VRAM is the deployment constraint</td><td class="best">q4/q8 variant</td></tr>
-            <tr><td>workload changes</td><td class="best">re-benchmark; do not reuse one winner</td></tr>
-            <tr><td>concurrency grows</td><td class="best">GPU/batching path</td></tr>
+            <tr><td>1</td><td>Benchmark the workload, not the model card.</td></tr>
+            <tr><td>2</td><td>If quality barely improves but joules rise, use the smaller model.</td></tr>
+            <tr><td>3</td><td>If VRAM is the deployment constraint, use q4/q8.</td></tr>
+            <tr><td>4</td><td>If the workload changes, re-benchmark; do not reuse one winner.</td></tr>
+            <tr><td>5</td><td>If concurrency grows, use GPU batching.</td></tr>
+            <tr><td>6</td><td>If the workload is tiny and local, CPU may be good enough.</td></tr>
+            <tr><td>7</td><td>Track tokens/joule, not just accuracy.</td></tr>
           </tbody>
         </table>
       </div>

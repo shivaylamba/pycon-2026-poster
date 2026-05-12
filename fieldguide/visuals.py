@@ -165,35 +165,51 @@ def quant_color(value: str) -> str:
 def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
     gpu = primary_gpu_profile(summary)
     data = summary[(summary.hardware_profile == gpu) & (summary.quantization == "q4") & (summary.workload == "code_generation")].copy()
-    data = data[data.family.isin(["Gemma", "Phi3", "Granite Code", "CodeLlama"])]
+    data = data[data.family.isin(["Gemma", "Phi3", "Granite", "Granite Code", "CodeLlama"])]
     if data.empty:
         return blank(path, "Learning 1: Bigger Models Have Diminishing Returns")
 
-    fig, axes = plt.subplots(2, 2, figsize=(11.0, 6.4))
+    fig, (ax_score, ax_cost) = plt.subplots(1, 2, figsize=(11.0, 4.5), gridspec_kw={"width_ratios": [1.0, 1.08]})
+    for ax in (ax_score, ax_cost):
+        light_ax(ax)
     colors = {
         "Gemma": POSTER_COLORS["blue"],
         "Phi3": POSTER_COLORS["green"],
+        "Granite": POSTER_COLORS["orange"],
         "Granite Code": POSTER_COLORS["orange"],
         "CodeLlama": POSTER_COLORS["purple"],
     }
-    metrics = [
-        ("score", "Toy code score", "higher is better"),
-        ("active_device_energy_j", "Energy/request (J)", "lower is better"),
-        ("total_latency_s", "Latency/request (s)", "lower is better"),
-        ("gpu_mem_peak_mb", "Peak VRAM (GB)", "lower is better"),
-    ]
-    for ax, (metric, title, note) in zip(axes.flat, metrics):
-        light_ax(ax)
-        for family, sub in data.groupby("family"):
-            sub = sub.sort_values("params_b")
-            y = sub[metric] / 1024 if metric == "gpu_mem_peak_mb" else sub[metric]
-            ax.plot(sub["params_b"], y, marker="o", linewidth=2.2, color=colors.get(family, POSTER_COLORS["blue"]), label=family)
-        ax.set_title(f"{title} ({note})", fontsize=10, weight="bold")
-        ax.set_xlabel("Parameters (billions)")
-        ax.set_ylabel(title)
-    axes[0, 0].legend(loc="best", fontsize=7, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
-    fig.suptitle("Learning 1: same-family model scaling on the code-generation toy set", fontsize=14, weight="bold", color=POSTER_COLORS["ink"])
-    return save(fig, path)
+    for family, sub in data.groupby("family"):
+        sub = sub.sort_values("params_b")
+        color = colors.get(family, POSTER_COLORS["blue"])
+        ax_score.plot(sub["params_b"], sub["score"], marker="o", linewidth=2.4, color=color, label=family)
+
+        base = sub.iloc[0]
+        cost_index = (
+            sub["active_device_energy_j"] / max(float(base["active_device_energy_j"]), 1e-9) +
+            sub["total_latency_s"] / max(float(base["total_latency_s"]), 1e-9) +
+            sub["gpu_mem_peak_mb"] / max(float(base["gpu_mem_peak_mb"]), 1e-9)
+        ) / 3
+        ax_cost.plot(sub["params_b"], cost_index, marker="o", linewidth=2.4, color=color, label=family)
+
+    ax_score.set_title("Toy code score (higher is better)", fontsize=11, weight="bold")
+    ax_score.set_xlabel("Parameters (billions)")
+    ax_score.set_ylabel("Score: deterministic checks passed")
+    ax_score.set_ylim(-0.03, 1.03)
+    ax_score.legend(loc="lower left", fontsize=7.5, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
+
+    ax_cost.axhline(1.0, color=POSTER_COLORS["border"], linestyle="--", linewidth=1.2)
+    ax_cost.set_title("Infrastructure cost index (lower is better)", fontsize=11, weight="bold")
+    ax_cost.set_xlabel("Parameters (billions)")
+    ax_cost.set_ylabel("Mean of energy, latency, VRAM vs smallest variant")
+    ax_cost.text(0.02, 0.95, "1.0 = smallest model in same family", transform=ax_cost.transAxes, va="top", fontsize=8.2, color=POSTER_COLORS["body"], bbox=dict(facecolor="#ffffff", edgecolor=POSTER_COLORS["border"], boxstyle="round,pad=0.25"))
+
+    fig.suptitle("Measured benchmark: same architecture/family, different sizes", fontsize=14, weight="bold", color=POSTER_COLORS["ink"])
+    fig.text(0.5, 0.02, "Cost index combines active-device energy/request, latency/request, and peak VRAM. Quality is a toy code-generation pass rate, not a universal model score.", ha="center", fontsize=8.8, color=POSTER_COLORS["body"])
+    fig.tight_layout(rect=[0, 0.06, 1, 0.91])
+    fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
+    plt.close(fig)
+    return path
 
 
 def plot_learning2_quantization_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
@@ -286,67 +302,63 @@ def plot_learning2_quantization_tradeoffs(summary: pd.DataFrame, path: Path) -> 
 
 def plot_learning3_workload_specialization(summary: pd.DataFrame, path: Path) -> Path:
     gpu = primary_gpu_profile(summary)
-    data = summary[(summary.hardware_profile == gpu) & (summary.params_b.between(6.0, 8.1))].copy()
-    data = data[data.quantization.isin(["q4", "q8", "fp16"])]
-    if data.empty:
-        return blank(path, "Learning 3: No Single Model Wins Every Workload")
+    data = summary[(summary.hardware_profile == gpu) & (summary.params_b.between(6.0, 8.5)) & (summary.quantization == "q4")].copy()
+    wanted_families = ["Gemma", "Mistral", "CodeLlama", "DeepSeek Coder", "Granite"]
+    data = data[data.family.isin(wanted_families)]
     workloads = [w for w in ["code_generation", "summarization", "chat_completion", "semantic_search"] if w in set(data["workload"])]
-    rows = []
-    for workload in workloads:
-        sub = data[data.workload.eq(workload)]
-        best_score = sub.sort_values(["score", "active_tokens_per_joule"], ascending=[False, False]).iloc[0]
-        best_eff = sub.sort_values(["active_tokens_per_joule", "score"], ascending=[False, False]).iloc[0]
-        rows.append((workload_label(workload), best_score, best_eff))
-    if not rows:
+    pivot = data.pivot_table(index="model_label", columns="workload", values="score", aggfunc="mean")
+    if pivot.empty or not workloads:
         return blank(path, "Learning 3: No Single Model Wins Every Workload")
+    pivot = pivot[workloads].fillna(0.0)
+    order = []
+    for family in wanted_families:
+        matches = [idx for idx in pivot.index if idx.startswith(family.replace("DeepSeek", "DeepSeek")) or family in idx]
+        order.extend(matches)
+    order = [idx for idx in order if idx in pivot.index] or list(pivot.index)
+    pivot = pivot.loc[order]
 
-    fig, ax = plt.subplots(figsize=(10.8, 5.2))
-    ax.set_facecolor("#ffffff")
-    fig.set_facecolor("#ffffff")
-    ax.axis("off")
-    ax.text(0.02, 0.95, "Learning 3: the right model changes by workload", transform=ax.transAxes, fontsize=16, weight="bold", color=POSTER_COLORS["ink"], va="top")
-    ax.text(0.02, 0.885, "Each card answers two practical questions: best toy-task result, and best active tokens per joule.", transform=ax.transAxes, fontsize=10.5, color=POSTER_COLORS["body"], va="top")
-
-    card_w, card_h = 0.46, 0.32
-    positions = [(0.02, 0.49), (0.52, 0.49), (0.02, 0.11), (0.52, 0.11)]
-    colors = ["#dbeafe", "#dcfce7", "#fff7ed", "#f3e8ff"]
-    for idx, ((label, best_score, best_eff), (x, y), color) in enumerate(zip(rows, positions, colors)):
-        ax.add_patch(plt.Rectangle((x, y), card_w, card_h, transform=ax.transAxes, facecolor=color, edgecolor=POSTER_COLORS["border"], linewidth=1.2))
-        ax.text(x + 0.025, y + card_h - 0.06, label.upper(), transform=ax.transAxes, fontsize=13, weight="bold", color=POSTER_COLORS["ink"], va="top")
-        ax.text(x + 0.025, y + card_h - 0.14, "Best task score", transform=ax.transAxes, fontsize=8.5, weight="bold", color=POSTER_COLORS["muted"], va="top")
-        ax.text(x + 0.19, y + card_h - 0.14, f"{best_score['model_label']}  ({best_score['score']:.2f})", transform=ax.transAxes, fontsize=9.8, weight="bold", color=POSTER_COLORS["ink"], va="top")
-        ax.text(x + 0.025, y + card_h - 0.23, "Most efficient", transform=ax.transAxes, fontsize=8.5, weight="bold", color=POSTER_COLORS["muted"], va="top")
-        ax.text(x + 0.19, y + card_h - 0.23, f"{best_eff['model_label']}  ({best_eff['active_tokens_per_joule']:.2f} tok/J)", transform=ax.transAxes, fontsize=9.8, weight="bold", color=POSTER_COLORS["green"], va="top")
-    ax.text(0.02, 0.03, "Takeaway: a model can be accurate for one workload and inefficient for another. Re-test when the workload changes.", transform=ax.transAxes, fontsize=11, weight="bold", color=POSTER_COLORS["ink"])
+    fig, ax = plt.subplots(figsize=(10.8, 4.7))
+    light_ax(ax)
+    im = ax.imshow(pivot.values, cmap="YlGnBu", aspect="auto", vmin=0, vmax=1)
+    ax.set_xticks(range(len(pivot.columns)), [workload_label(c) for c in pivot.columns], fontsize=9)
+    ax.set_yticks(range(len(pivot.index)), pivot.index, fontsize=8)
+    for i in range(pivot.shape[0]):
+        for j in range(pivot.shape[1]):
+            value = float(pivot.values[i, j])
+            color = "#ffffff" if value >= 0.62 else POSTER_COLORS["ink"]
+            ax.text(j, i, f"{value:.2f}", ha="center", va="center", color=color, fontsize=8.5, weight="bold")
+    ax.set_title("Workload-specialization matrix: measured toy score", fontsize=14, weight="bold", color=POSTER_COLORS["ink"], pad=10)
+    ax.set_xlabel("Workload")
+    ax.set_ylabel("Similar-size q4 model")
+    cbar = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.018)
+    cbar.set_label("Toy task score (higher is better)", color=POSTER_COLORS["body"], fontsize=8.5)
+    cbar.ax.tick_params(colors=POSTER_COLORS["body"], labelsize=7.5)
+    fig.text(0.5, 0.02, "Read horizontally: the same model can look strong on one workload and weak on another.", ha="center", fontsize=9, color=POSTER_COLORS["body"], weight="bold")
+    fig.tight_layout(rect=[0, 0.05, 1, 0.93])
     fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
     plt.close(fig)
     return path
 
 
 def plot_learning3_cpu_gpu_tradeoff(summary: pd.DataFrame, path: Path) -> Path:
-    data = summary[summary.model_id.eq("codellama-7b-q4")].copy()
-    if data.empty:
-        return blank(path, "CPU vs GPU Tradeoff")
-    pivot = data.pivot_table(index="workload", columns="hardware_profile", values="tokens_per_sec", aggfunc="mean").fillna(0)
-    if "cpu" not in pivot.columns:
-        return blank(path, "CPU vs GPU Tradeoff", "CPU comparison rows are required for this figure.")
-    gpu = primary_gpu_profile(summary)
-    if gpu not in pivot.columns:
-        return blank(path, "CPU vs GPU Tradeoff", "GPU comparison rows are required for this figure.")
-    pivot = pivot[[c for c in ["cpu", gpu] if c in pivot.columns]].loc[[c for c in ["chat_completion", "summarization", "code_generation", "semantic_search"] if c in pivot.index]]
-
-    fig, ax = plt.subplots(figsize=(8.8, 4.2))
+    fig, ax = plt.subplots(figsize=(8.8, 4.0))
     light_ax(ax)
-    y = np.arange(len(pivot.index))
-    ax.barh(y - 0.18, pivot["cpu"], height=0.34, color="#fbbf24", label="CPU-only")
-    ax.barh(y + 0.18, pivot[gpu], height=0.34, color="#38bdf8", label=gpu.replace("_", " ").upper())
-    ax.set_yticks(y, [workload_label(i) for i in pivot.index])
-    ax.set_xlabel("Throughput (tokens/sec or items/sec)")
-    ax.set_title("CPU vs GPU: hardware changes deployment practicality", fontsize=12, weight="bold")
-    ax.legend(loc="lower right", fontsize=8, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
-    for i, workload in enumerate(pivot.index):
-        speedup = pivot.loc[workload, gpu] / max(pivot.loc[workload, "cpu"], 1e-9)
-        ax.text(max(pivot.loc[workload, gpu], pivot.loc[workload, "cpu"]) * 1.02, i + 0.18, f"{speedup:.1f}x", va="center", fontsize=8, color=POSTER_COLORS["ink"], weight="bold")
+    x = np.array([1, 2, 4, 8, 16, 32])
+    cpu = np.array([1.0, 1.35, 2.05, 3.4, 5.8, 9.8])
+    gpu = np.array([1.7, 1.35, 1.08, 0.92, 0.86, 0.84])
+    ax.plot(x, cpu, marker="o", linewidth=2.8, color="#f59e0b", label="CPU-only path")
+    ax.plot(x, gpu, marker="o", linewidth=2.8, color="#2563eb", label="GPU + batching path")
+    ax.fill_between(x, cpu, gpu, where=cpu > gpu, color="#dcfce7", alpha=0.65)
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(x, [str(v) for v in x])
+    ax.set_xlabel("Concurrency or batch size")
+    ax.set_ylabel("Relative latency/cost pressure")
+    ax.set_title("CPU vs GPU: conceptual scale inflection point", fontsize=12, weight="bold")
+    ax.legend(loc="upper left", fontsize=8, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
+    ax.text(1.05, 8.9, "conceptual heuristic\nnot measured concurrency data", fontsize=8.5, color=POSTER_COLORS["red"], weight="bold", bbox=dict(facecolor="#fff7ed", edgecolor="#fed7aa", boxstyle="round,pad=0.3"))
+    ax.text(1.05, 0.55, "tiny/local jobs:\nCPU can be fine", fontsize=8.5, color=POSTER_COLORS["body"], bbox=dict(facecolor="#f8f9fa", edgecolor=POSTER_COLORS["border"], boxstyle="round,pad=0.3"))
+    ax.text(9.2, 1.25, "batching/concurrency:\nGPU amortizes overhead", fontsize=8.5, color=POSTER_COLORS["body"], bbox=dict(facecolor="#f0fdf4", edgecolor="#bbf7d0", boxstyle="round,pad=0.3"))
+    ax.set_ylim(0.4, 10.5)
     return save(fig, path)
 
 
@@ -656,42 +668,50 @@ def write_transformer_svg(path: Path) -> Path:
 
 def write_lifecycle_svg(path: Path) -> Path:
     stages = [
-        ("Prompt", "input size", "#2563eb"),
-        ("CPU prefill", "tokenize + prep", "#ca8a04"),
-        ("RAM transfer", "move inputs", "#0e7490"),
-        ("GPU load", "weights + VRAM", "#7c3aed"),
-        ("Transformer", "main inference", "#16a34a"),
-        ("KV cache", "context memory", "#ea580c"),
-        ("Sampling", "next tokens", "#be185d"),
-        ("Post-process", "parse + serialize", "#1d4ed8"),
-        ("Response", "return output", "#2563eb"),
+        ("Prompt", "NET", "request size", "#2563eb", 66),
+        ("Python client", "CPU", "adapter + timers", "#1d4ed8", 82),
+        ("Tokenize", "CPU", "prefill work", "#ca8a04", 86),
+        ("CPU + RAM", "RAM", "copy tensors", "#0e7490", 82),
+        ("VRAM load", "VRAM", "weights/cache", "#7c3aed", 84),
+        ("Transformer", "GPU", "attention + MLP", "#16a34a", 104),
+        ("KV cache", "VRAM", "context memory", "#ea580c", 84),
+        ("Sampling", "GPU", "decode loop", "#be185d", 76),
+        ("Post-process", "CPU", "parse/rank", "#1d4ed8", 84),
+        ("Response", "NET", "return", "#2563eb", 64),
     ]
-    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 420">']
-    parts.append('<rect width="980" height="420" fill="#ffffff"/>')
-    parts.append('<text x="28" y="38" fill="#10213d" font-size="25" font-weight="800">What Actually Happens During an LLM Request?</text>')
-    parts.append('<text x="28" y="65" fill="#6c7a89" font-size="14">A request is a pipeline: bottlenecks can come from CPU, memory movement, GPU inference, or response handling.</text>')
+    parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360">']
+    parts.append('<rect width="980" height="360" fill="#ffffff"/>')
+    parts.append('<text x="26" y="35" fill="#10213d" font-size="25" font-weight="800">What Actually Happens During One LLM Request?</text>')
+    parts.append('<text x="26" y="60" fill="#6c7a89" font-size="13.5">OpenTelemetry-style view: every row in the benchmark captures slices of latency, tokens, memory, and active-device energy.</text>')
     parts.append('<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1b3a5c"/></marker></defs>')
+    parts.append('<line x1="32" y1="92" x2="948" y2="92" stroke="#d1d5db" stroke-width="2"/>')
+    parts.append('<text x="32" y="86" fill="#6c7a89" font-size="11" font-weight="800">REQUEST TRACE</text>')
 
-    def draw_stage(i: int, x: int, y: int, stage: str, subtitle: str, color: str, width: int = 150) -> None:
-        parts.append(f'<rect x="{x}" y="{y}" width="{width}" height="82" rx="10" fill="#f8f9fa" stroke="{color}" stroke-width="3"/>')
-        parts.append(f'<text x="{x+width/2}" y="{y+33}" text-anchor="middle" fill="#10213d" font-size="14" font-weight="800">{stage}</text>')
-        parts.append(f'<text x="{x+width/2}" y="{y+58}" text-anchor="middle" fill="#6c7a89" font-size="11">{subtitle}</text>')
-        parts.append(f'<circle cx="{x+14}" cy="{y+14}" r="10" fill="{color}" opacity=".92"/><text x="{x+14}" y="{y+18}" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="800">{i}</text>')
+    x = 24
+    y = 105
+    for i, (stage, tag, hint, color, width) in enumerate(stages, start=1):
+        parts.append(f'<rect x="{x}" y="{y}" width="{width}" height="66" rx="8" fill="#f8f9fa" stroke="{color}" stroke-width="2.4"/>')
+        parts.append(f'<rect x="{x+8}" y="{y+8}" width="38" height="17" rx="8" fill="{color}" opacity=".9"/>')
+        parts.append(f'<text x="{x+27}" y="{y+21}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="800">{tag}</text>')
+        parts.append(f'<text x="{x+width/2}" y="{y+42}" text-anchor="middle" fill="#10213d" font-size="12" font-weight="800">{stage}</text>')
+        parts.append(f'<text x="{x+width/2}" y="{y+57}" text-anchor="middle" fill="#6c7a89" font-size="9">{hint}</text>')
+        if i < len(stages):
+            parts.append(f'<path d="M{x+width+3} {y+33} H{x+width+9}" stroke="#1b3a5c" stroke-width="2" marker-end="url(#a)"/>')
+        x += width + 12
 
-    row1 = stages[:5]
-    row2 = stages[5:]
-    x_positions1 = [36, 220, 404, 588, 772]
-    x_positions2 = [128, 336, 544, 752]
-    for i, ((stage, subtitle, color), x) in enumerate(zip(row1, x_positions1), start=1):
-        draw_stage(i, x, 104, stage, subtitle, color)
-        if i < len(row1):
-            parts.append(f'<path d="M{x+154} 145 H{x+178}" stroke="#1b3a5c" stroke-width="2.4" marker-end="url(#a)"/>')
-    parts.append('<path d="M847 190 C847 235, 128 220, 128 260" fill="none" stroke="#1b3a5c" stroke-width="2.4" marker-end="url(#a)" stroke-dasharray="5 4"/>')
-    for j, ((stage, subtitle, color), x) in enumerate(zip(row2, x_positions2), start=6):
-        draw_stage(j, x, 262, stage, subtitle, color)
-        if j < 9:
-            parts.append(f'<path d="M{x+154} 303 H{x+178}" stroke="#1b3a5c" stroke-width="2.4" marker-end="url(#a)"/>')
-    parts.append('<text x="28" y="392" fill="#1a2744" font-size="15" font-weight="800">Takeaway: inference efficiency depends on the whole system, not just the GPU.</text>')
+    callouts = [
+        (42, 220, "CPU tokenization can matter", "Prompt length and Python-side prep show up before generation.", "#fff7ed", "#ca8a04"),
+        (278, 220, "Memory movement can matter", "RAM/VRAM transfers and model loading affect first-token latency.", "#ecfeff", "#0e7490"),
+        (520, 220, "GPU inference dominates long outputs", "Decode loops spend repeated work on transformer blocks.", "#f0fdf4", "#16a34a"),
+        (748, 220, "KV cache grows", "Context length and generated tokens increase VRAM pressure.", "#f5f3ff", "#7c3aed"),
+    ]
+    for x0, y0, title, body, fill, stroke in callouts:
+        parts.append(f'<rect x="{x0}" y="{y0}" width="190" height="58" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="1.3"/>')
+        parts.append(f'<text x="{x0+12}" y="{y0+22}" fill="#10213d" font-size="12" font-weight="800">{title}</text>')
+        parts.append(f'<text x="{x0+12}" y="{y0+40}" fill="#2c3e50" font-size="9.4">{body}</text>')
+
+    parts.append('<rect x="26" y="305" width="928" height="34" rx="8" fill="#f0f4fa" stroke="#d1d5db"/>')
+    parts.append('<text x="44" y="327" fill="#1a2744" font-size="15" font-weight="800">Takeaway: efficiency is a full request pipeline, not just a GPU kernel.</text>')
     parts.append("</svg>")
     path.write_text("".join(parts), encoding="utf-8")
     return path
@@ -787,20 +807,26 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     h1 {{ font-size:clamp(16px,1.7vw,24px); line-height:1.12; font-weight:800; letter-spacing:-.01em; }}
     .authors {{ font-size:10.5px; margin-top:4px; opacity:.95; font-weight:600; }}
     .affiliations {{ font-size:9px; margin-top:2px; opacity:.78; }}
+    .glance-row {{ display:grid; grid-template-columns:132px repeat(4,1fr); gap:8px; padding:6px 16px; border-bottom:1.5px solid var(--border); background:#fbfcff; flex-shrink:0; align-items:stretch; }}
+    .glance-label {{ display:flex; align-items:center; color:var(--accent); font-size:12px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }}
+    .glance-card {{ border:1px solid var(--border); border-radius:5px; background:#ffffff; padding:6px 9px; min-height:52px; }}
+    .glance-card b {{ display:block; color:var(--heading); font-size:13px; line-height:1.05; margin-bottom:4px; }}
+    .glance-card span {{ display:block; color:var(--body); font-size:8.7px; line-height:1.24; }}
     .body {{ display:grid; grid-template-columns:.92fr 1.12fr 1fr; flex:1; min-height:0; }}
-    .col {{ padding:11px 15px 12px; border-right:1.5px solid var(--border); overflow:hidden; }}
+    .col {{ padding:10px 14px 11px; border-right:1.5px solid var(--border); overflow:hidden; }}
     .col:last-child {{ border-right:none; }}
     .section {{ margin-bottom:8px; }}
     .section-title {{ font-size:12px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:3px; border-bottom:2px solid var(--accent); margin-bottom:6px; }}
     .section-title.blue {{ color:var(--blue); border-bottom-color:var(--blue); }}
+    .badge {{ display:inline-flex; align-items:center; gap:4px; background:#eef4ff; border:1px solid #c7d7f2; color:#1b3a5c; border-radius:999px; padding:2px 7px; font-size:7.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:4px; }}
     .learning-title {{ font-size:15px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }}
     .tagline {{ font-size:10.2px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }}
     p, li {{ font-size:9.4px; line-height:1.37; color:var(--body); }}
     strong {{ color:var(--ink); }}
     ul {{ padding-left:14px; margin:4px 0; }}
     li {{ margin-bottom:2px; }}
-    table {{ width:100%; border-collapse:collapse; font-size:8.2px; margin:4px 0; }}
-    th, td {{ border:1px solid var(--border); padding:2.6px 4px; text-align:center; }}
+    table {{ width:100%; border-collapse:collapse; font-size:7.9px; margin:4px 0; }}
+    th, td {{ border:1px solid var(--border); padding:2.2px 4px; text-align:center; }}
     th {{ background:var(--surface); color:var(--heading); font-weight:700; }}
     td:first-child {{ text-align:left; font-weight:700; }}
     .best {{ color:var(--green); font-weight:800; }}
@@ -812,16 +838,22 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     .fig-caption {{ background:var(--surface); padding:4px 9px; font-size:8.8px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }}
     .fig-body {{ padding:5px; }}
     .chart {{ width:100%; display:block; object-fit:contain; }}
-    .chart-life {{ height:220px; }}
-    .chart-large {{ height:258px; }}
-    .chart-xl {{ height:292px; }}
-    .chart-mid {{ height:230px; }}
-    .chart-small {{ height:145px; }}
+    .chart-life {{ height:170px; }}
+    .chart-large {{ height:228px; }}
+    .chart-xl {{ height:242px; }}
+    .chart-mid {{ height:198px; }}
+    .chart-small {{ height:110px; }}
     .callout {{ background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.4px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }}
+    .caution {{ background:#fff7ed; border-left:3px solid var(--orange); }}
     .score-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }}
     .score-card {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:54px; }}
     .score-card b {{ display:block; color:var(--heading); font-size:8.8px; margin-bottom:2px; }}
     .score-card span {{ display:block; color:var(--body); font-size:7.8px; line-height:1.25; }}
+    .choice-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:5px 0; }}
+    .choice-box {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:5px 6px; min-height:58px; }}
+    .choice-box b {{ display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }}
+    .choice-box ul {{ margin:0; padding-left:13px; }}
+    .choice-box li {{ font-size:7.4px; line-height:1.15; margin-bottom:0; }}
     .decision {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px; }}
     .decision div {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:58px; }}
     .decision b {{ display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }}
@@ -854,13 +886,21 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     <div class="logo-area" style="visibility:hidden"><div class="py-box">Py</div><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
   </div>
 
+  <div class="glance-row">
+    <div class="glance-label">Results<br>at a Glance</div>
+    <div class="glance-card"><b>Bigger ≠ Better</b><span>Scaling model size often raises energy, latency, and VRAM faster than toy-task quality.</span></div>
+    <div class="glance-card"><b>Quantization Changes Economics</b><span>q4/q8 variants can cut memory and energy enough to change where models can run.</span></div>
+    <div class="glance-card"><b>No Single Winner</b><span>The best model depends on workload: code, summary, chat, RAG, or embeddings.</span></div>
+    <div class="glance-card"><b>Hardware Depends on Scale</b><span>CPU can be fine for tiny local jobs; GPU wins when batching or concurrency grows.</span></div>
+  </div>
+
   <div class="body">
     <div class="col">
       <div class="section">
         <div class="section-title">Overview</div>
         <p>Everyday LLM calls look simple from Python, but the real deployment decision is a tradeoff between <strong>quality</strong>, <strong>latency</strong>, <strong>VRAM</strong>, <strong>energy</strong>, and <strong>cost</strong>.</p>
         <p style="margin-top:4px;">We benchmark code generation, summarization, chat, RAG-style search, and embeddings across model sizes, quantization levels, architectures, and CPU/GPU configurations.</p>
-        <div class="callout"><strong>How to read this poster:</strong> choose along three axes: model size, quantization, and workload/system fit.</div>
+        <div class="callout"><strong>Thesis:</strong> the most accurate LLM is often not the most economically efficient one. LLM deployment is a systems engineering problem, not just model selection.</div>
       </div>
 
       <div class="section">
@@ -883,21 +923,36 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
 
       <div class="section">
         <div class="section-title blue">Measurement Pipeline</div>
+        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, and workload score.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter writes one tidy metric row per request.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib turn traces into poster-ready figures.</div></div>
         </div>
+        <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
       </div>
 
       <div class="section">
-        <div class="section-title">What Happens During One LLM Request?</div>
+        <div class="section-title">What Gets Timed</div>
+        <table>
+          <thead><tr><th>Slice</th><th>Meaning</th><th>Why Python Devs Care</th></tr></thead>
+          <tbody>
+            <tr><td>Network</td><td>client call overhead</td><td>endpoint placement, batching</td></tr>
+            <tr><td>Tokenization</td><td>prompt processing / prefill</td><td>long docs are not free</td></tr>
+            <tr><td>Inference</td><td>model generation</td><td>model size dominates</td></tr>
+            <tr><td>Post-processing</td><td>parse, serialize, rank</td><td>pipeline glue is measurable</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">What Actually Happens During One LLM Request?</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline</span><span>CPU + memory + GPU + response</span></div>
+          <div class="fig-caption"><span>Takeaway: efficiency is a full request pipeline, not just a GPU kernel</span><span>FULL PIPELINE</span></div>
           <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Request lifecycle"></div>
         </div>
-        <p class="note">A slow or expensive call can be caused by tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, or post-processing.</p>
+        <p class="note">A slow or expensive call can come from tokenization/prefill, memory movement, KV cache growth, GPU inference, sampling, networking, or response parsing.</p>
       </div>
 
       <div class="section">
@@ -913,61 +968,68 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
 
     <div class="col">
       <div class="section">
-        <div class="section-title">Learning 1</div>
-        <div class="learning-title">Bigger Models Have Diminishing Returns</div>
+        <div class="section-title">Learning 1: Bigger Models Have Diminishing Returns</div>
+        <div class="badge">SAME ARCHITECTURE · DIFFERENT SIZES</div>
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
+        <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: quality can flatten while joules, latency, and VRAM keep rising</span><span>same-family scaling</span></div>
+          <div class="fig-caption"><span>Measured benchmark: toy score vs infrastructure cost index</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
         <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
       </div>
 
       <div class="section">
-        <div class="section-title">Learning 2</div>
-        <div class="learning-title">Quantization Changes the Economics of AI</div>
-        <div class="tagline">4-bit models often preserve useful intelligence at a fraction of infrastructure cost.</div>
+        <div class="section-title">Learning 2: Quantization Changes the Economics of AI</div>
+        <div class="badge">SAME MODEL · DIFFERENT PRECISION</div>
+        <div class="tagline">4-bit and 8-bit models often retain useful quality while reducing memory, energy, and latency.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Left = costs to minimize; right = benefits to preserve</span><span>% of same-model FP16 baseline</span></div>
+          <div class="fig-caption"><span>Measured benchmark: fp16 vs q8 vs q4 only within the same model</span><span>% OF SAME-MODEL FP16 BASELINE</span></div>
           <div class="fig-body"><img class="chart chart-xl" src="learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
         </div>
-        <div class="callout">Takeaway: quantization is not just a speed trick. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment,” while toy-task scores usually stay in the same range.</div>
+        <div class="callout">Quantization changes representation efficiency, not the underlying model family. It can move a model from “needs a large GPU” to “fits a smaller/cheaper deployment.”</div>
       </div>
     </div>
 
     <div class="col">
       <div class="section">
-        <div class="section-title">Learning 3</div>
-        <div class="learning-title">No Single Model Wins Every Workload</div>
+        <div class="section-title">Learning 3: No Single Model Wins Every Workload</div>
+        <div class="badge">SIMILAR SIZE · DIFFERENT ARCHITECTURES / WORKLOADS</div>
         <div class="tagline">The efficient model depends on whether you are doing code, summaries, chat, RAG, or embeddings.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: best score and best efficiency can be different models</span><span>same hardware, different workload</span></div>
+          <div class="fig-caption"><span>Measured benchmark: workload-specialization matrix</span><span>SIMILAR-SIZE Q4 MODELS</span></div>
           <div class="fig-body"><img class="chart chart-mid" src="learning3_workload_specialization.png" alt="Workload specialization"></div>
         </div>
-        <p class="note">Read each card as a deployment choice: the first line is the highest toy-task result, the second line is the model that produced the most active tokens per joule.</p>
+        <div class="callout">“Best model” is the wrong question. Ask: best model for which workload, on which hardware, under what latency and energy budget?</div>
       </div>
 
       <div class="section">
-        <div class="section-title blue">System Proof Point</div>
+        <div class="section-title blue">CPU vs GPU: The Scale Inflection Point</div>
+        <div class="badge">HARDWARE SCALE · CONCEPTUAL HEURISTIC</div>
+        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not the same as throughput.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Takeaway: hardware changes practicality once throughput matters</span><span>CPU-only vs GPU</span></div>
+          <div class="fig-caption"><span>Conceptual deployment heuristic, not measured concurrency data</span><span>CPU-ONLY VS GPU + BATCHING</span></div>
           <div class="fig-body"><img class="chart chart-small" src="learning3_cpu_gpu_tradeoff.png" alt="CPU GPU tradeoff"></div>
         </div>
-        <table>
-          <thead><tr><th>Workload</th><th>Latency Shift</th><th>Result</th></tr></thead>
-          <tbody>{cpu_gpu_rows()}</tbody>
-        </table>
+        <div class="choice-grid">
+          <div class="choice-box"><b>CPU is reasonable for</b><ul><li>prototyping</li><li>local scripts</li><li>tiny embedding jobs</li><li>single-user offline tools</li><li>low request volume</li></ul></div>
+          <div class="choice-box"><b>GPU becomes better for</b><ul><li>long prompts / outputs</li><li>batch embeddings</li><li>multi-user chat</li><li>latency-sensitive services</li><li>high concurrency</li></ul></div>
+        </div>
+        <p class="note"><strong>Tiny embedding jobs may not amortize GPU overhead.</strong> Measure batch size before assuming the GPU path wins.</p>
       </div>
 
       <div class="section">
-        <div class="section-title">How To Choose</div>
+        <div class="section-title">Practical Heuristics</div>
         <table>
-          <thead><tr><th>If You See...</th><th>Choose...</th></tr></thead>
+          <thead><tr><th>#</th><th>Heuristic</th></tr></thead>
           <tbody>
-            <tr><td>quality barely improves but joules rise</td><td class="best">smaller model</td></tr>
-            <tr><td>VRAM is the deployment constraint</td><td class="best">q4/q8 variant</td></tr>
-            <tr><td>workload changes</td><td class="best">re-benchmark; do not reuse one winner</td></tr>
-            <tr><td>concurrency grows</td><td class="best">GPU/batching path</td></tr>
+            <tr><td>1</td><td>Benchmark the workload, not the model card.</td></tr>
+            <tr><td>2</td><td>If quality barely improves but joules rise, use the smaller model.</td></tr>
+            <tr><td>3</td><td>If VRAM is the deployment constraint, use q4/q8.</td></tr>
+            <tr><td>4</td><td>If the workload changes, re-benchmark; do not reuse one winner.</td></tr>
+            <tr><td>5</td><td>If concurrency grows, use GPU batching.</td></tr>
+            <tr><td>6</td><td>If the workload is tiny and local, CPU may be good enough.</td></tr>
+            <tr><td>7</td><td>Track tokens/joule, not just accuracy.</td></tr>
           </tbody>
         </table>
       </div>
