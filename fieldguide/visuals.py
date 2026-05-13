@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import html as html_lib
 import json
 import shutil
 from pathlib import Path
@@ -82,6 +83,7 @@ def make_visuals(results_dir: Path, out: Path) -> List[Path]:
         write_lifecycle_svg(metrics, out / "request_lifecycle.svg"),
         write_memory_svg(out / "memory_movement.svg"),
         build_story_poster(results_dir, out, out / "systems_tradeoffs_poster.html"),
+        build_fieldguide_dashboard(results_dir, out, out / "fieldguide_dashboard.html"),
     ]
     return paths
 
@@ -1212,6 +1214,464 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
   </div>
   <div class="repo-note">Open repository: github.com/shivaylamba/pycon-2026-poster | Inspired by: Alizadeh et al., Language Models in Software Development Tasks: An Experimental Analysis of Energy and Accuracy, arXiv:2412.00329.</div>
 </div>
+</body>
+</html>"""
+    path.write_text(html, encoding="utf-8")
+    return path
+
+
+def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> Path:
+    """Build a multi-section static HTML companion UI for poster attendees."""
+    metrics_path = results_dir / "metrics_enriched.csv"
+    summary_path = results_dir / "summary_enriched.csv"
+    metrics = pd.read_csv(metrics_path) if metrics_path.exists() else pd.DataFrame()
+    summary = pd.read_csv(summary_path) if summary_path.exists() else pd.DataFrame()
+
+    poster_asset_dir = Path(__file__).resolve().parents[1] / "poster" / "assets"
+    for name in [
+        "latency_waterfall_chat.png",
+        "latency_waterfall_summarization.png",
+        "cost_bars_chat.png",
+        "energy_active_device_chat.png",
+        "energy_active_device_summarization.png",
+        "energy_active_device_batch_embeddings.png",
+    ]:
+        src = poster_asset_dir / name
+        if src.exists():
+            shutil.copyfile(src, assets / name)
+
+    rows_count = int(len(metrics))
+    model_count = int(metrics["model_id"].nunique()) if "model_id" in metrics else 0
+    workload_count = int(metrics["workload"].nunique()) if "workload" in metrics else 0
+    hardware_count = int(metrics["hardware_profile"].nunique()) if "hardware_profile" in metrics else 0
+    hardware_labels = ", ".join(sorted(metrics["hardware_label"].dropna().unique())) if "hardware_label" in metrics and not metrics.empty else "local hardware"
+
+    def esc(value: object) -> str:
+        return html_lib.escape("" if pd.isna(value) else str(value))
+
+    def fmt(value: object, digits: int = 2, suffix: str = "") -> str:
+        try:
+            if pd.isna(value):
+                return "n/a"
+            return f"{float(value):.{digits}f}{suffix}"
+        except (TypeError, ValueError):
+            return esc(value)
+
+    def asset_exists(name: str) -> bool:
+        return (assets / name).exists()
+
+    def img_card(name: str, title: str, tag: str, takeaway: str, how: str, span: str = "") -> str:
+        if not asset_exists(name):
+            return ""
+        span_class = f" {span}" if span else ""
+        return f"""
+        <article class="chart-card{span_class}">
+          <div class="chart-topline"><span>{esc(tag)}</span></div>
+          <h3>{esc(title)}</h3>
+          <p class="takeaway">{esc(takeaway)}</p>
+          <figure><img src="{esc(name)}" alt="{esc(title)}"></figure>
+          <p class="how">{esc(how)}</p>
+        </article>"""
+
+    def link_card(href: str, title: str, body: str, tag: str = "artifact") -> str:
+        return f"""
+        <a class="resource-card" href="{esc(href)}">
+          <span>{esc(tag)}</span>
+          <strong>{esc(title)}</strong>
+          <em>{esc(body)}</em>
+        </a>"""
+
+    latency_rows = ""
+    if not metrics.empty:
+        slice_defs = [
+            ("network_s", "Network", "client/API overhead"),
+            ("tokenization_s", "Tokenization / prefill", "prompt processing"),
+            ("inference_s", "Inference", "model generation"),
+            ("postprocess_s", "Post-processing", "parse, rank, serialize"),
+        ]
+        total = sum(float(metrics[col].fillna(0).mean()) for col, _, _ in slice_defs if col in metrics)
+        for col, label, meaning in slice_defs:
+            if col not in metrics:
+                continue
+            avg = float(metrics[col].fillna(0).mean())
+            pct = (avg / total * 100) if total else 0.0
+            latency_rows += f"""
+              <tr>
+                <td>{label}</td>
+                <td>{meaning}</td>
+                <td>{avg:.3f}s avg</td>
+                <td><div class="bar"><i style="width:{min(pct, 100):.1f}%"></i></div></td>
+              </tr>"""
+
+    workload_rows = ""
+    if not summary.empty:
+        for workload in sorted(summary["workload"].dropna().unique()):
+            sub = summary[summary["workload"].eq(workload)].copy()
+            quality = sub.sort_values(["score", "total_latency_s"], ascending=[False, True]).head(1)
+            energy = sub.sort_values("active_device_energy_j", ascending=True).head(1)
+            efficiency = sub.sort_values("active_tokens_per_joule", ascending=False).head(1)
+            q = quality.iloc[0] if not quality.empty else None
+            e = energy.iloc[0] if not energy.empty else None
+            eff = efficiency.iloc[0] if not efficiency.empty else None
+            workload_rows += f"""
+              <tr>
+                <td>{esc(workload_label(workload))}</td>
+                <td>{esc(q.model_label) if q is not None else "n/a"} <small>{fmt(q.score if q is not None else None, 2)}</small></td>
+                <td>{esc(e.model_label) if e is not None else "n/a"} <small>{fmt(e.active_device_energy_j if e is not None else None, 0, "J")}</small></td>
+                <td>{esc(eff.model_label) if eff is not None else "n/a"} <small>{fmt(eff.active_tokens_per_joule if eff is not None else None, 2, " tok/J")}</small></td>
+              </tr>"""
+
+    explorer_cols = [
+        "model_label",
+        "family",
+        "params_b",
+        "quantization",
+        "hardware_profile",
+        "workload",
+        "score",
+        "total_latency_s",
+        "active_device_energy_j",
+        "active_tokens_per_joule",
+        "gpu_mem_peak_mb",
+        "cost_per_request_usd",
+        "input_tokens",
+        "output_tokens",
+    ]
+    explorer = pd.DataFrame(columns=explorer_cols)
+    if not summary.empty:
+        explorer = summary[[col for col in explorer_cols if col in summary.columns]].copy()
+        for col in explorer.select_dtypes(include=[np.number]).columns:
+            explorer[col] = explorer[col].round(4)
+    explorer_json = json.dumps(explorer.to_dict(orient="records"))
+
+    chart_sections = {
+        "poster": [
+            ("learning1_scaling_tradeoffs.png", "Learning 1: Bigger models have diminishing returns", "same architecture", "Same-family size comparisons reveal where quality flattens but energy, latency, or VRAM keep rising.", "Read each family line left-to-right; lower energy/latency/VRAM is better, higher toy score is better.", "wide"),
+            ("learning2_quantization_tradeoffs.png", "Learning 2: Quantization changes economics", "same model", "FP16 is the 100% baseline; q8/q4 show how representation changes deployment cost.", "Left panel costs should go down; right panel benefits should stay high or rise.", "wide"),
+            ("workload_active_device_energy.png", "Learning 3: Energy depends on workload", "common workloads", "Chat, summaries, RAG-style search, and embeddings do not stress the same parts of the stack.", "Compare within a panel, not across every panel; lower joules means less active-device energy.", "wide"),
+            ("learning3_cpu_gpu_tradeoff.png", "CPU vs GPU scale inflection point", "conceptual heuristic", "Hardware choice changes when batch size, concurrency, prompt length, or output length grows.", "This is a deployment heuristic, not a measured concurrency benchmark.", ""),
+        ],
+        "workloads": [
+            ("latency_waterfall_chat.png", "Chat latency waterfall", "measured slices", "A single chat call has client, prefill, inference, and post-processing pieces.", "The waterfall shows where time accumulates before the response is done.", "wide"),
+            ("latency_waterfall_summarization.png", "Summarization latency waterfall", "measured slices", "Long documents make prefill and generation more visible than small chat prompts.", "Use this to explain why document workflows feel different from chat.", "wide"),
+            ("cost_bars_chat.png", "Chat cost bars", "cost estimate", "Cost per request and cost per 1,000 tokens can tell different stories.", "Use the two panels together; low per-request cost can still hide inefficient token economics.", ""),
+            ("energy_active_device_chat.png", "Active-device energy: chat", "joules/request", "Small chat prompts expose overheads and short-output behavior.", "Lower bars use less active-device energy for this workload.", ""),
+            ("energy_active_device_summarization.png", "Active-device energy: summarization", "joules/request", "Longer inputs and outputs reveal bigger model and hardware differences.", "Compare CPU and GPU rows as active-device estimates, not full wall energy.", ""),
+            ("energy_active_device_batch_embeddings.png", "Active-device energy: batch embeddings", "small-batch counterexample", "Tiny embedding batches may not amortize GPU overhead.", "Increase batch size before assuming the GPU is cheaper.", ""),
+            ("experiment_d_latency_waterfall.png", "CPU vs GPU latency slices", "hardware comparison", "The same pipeline can bottleneck differently on CPU and GPU.", "Look for the largest colored segment; that is where optimization should start.", "wide"),
+        ],
+        "experiments": [
+            ("experiment_a_scaling_curves.png", "Experiment A: model size scaling", "size isolation", "Same-family scaling isolates parameter-count effects as much as the run allows.", "Use for the model-size story behind Learning 1.", ""),
+            ("energy_accuracy_frontier.png", "Energy vs accuracy frontier", "pareto view", "The best practical model may be the one closest to the low-energy/high-quality frontier.", "Models far from the frontier are dominated for this run.", ""),
+            ("expanding_transformer.svg", "Expanding transformer diagram", "architecture intuition", "More layers, larger KV cache, and more attention compute increase infrastructure pressure.", "This is explanatory, not a benchmark measurement.", ""),
+            ("experiment_b_quantization.png", "Experiment B: quantization comparison", "precision isolation", "Same model, different precision separates compression effects from architecture effects.", "Use this with the q4/q8/fp16 chart to explain why memory movement matters.", ""),
+            ("experiment_b_efficiency_waterfall.png", "Quantization efficiency waterfall", "efficiency deltas", "Compression can shift VRAM, latency, energy, and throughput simultaneously.", "Read as a relative savings/contribution view.", ""),
+            ("experiment_c_workload_heatmap.png", "Experiment C: workload heatmap", "architecture/workload", "Similar-size models can specialize differently by workload.", "Rows are models, columns are tasks; color is measured task score.", ""),
+            ("experiment_c_radar.png", "Experiment C: radar chart", "model profile", "Radar charts make model tradeoffs visible across several metrics at once.", "No single spoke is enough to select a deployment.", ""),
+            ("experiment_d_cpu_gpu.png", "Experiment D: CPU vs GPU throughput", "hardware", "GPU advantage depends on model, workload shape, and batching.", "Treat single-request latency separately from throughput.", ""),
+            ("experiment_d_concurrency.png", "Experiment D: concurrency heuristic", "scale", "Concurrency changes the economics because the GPU can amortize work.", "Use this as the systems argument, not a one-off latency claim.", ""),
+        ],
+        "systems": [
+            ("request_lifecycle.svg", "Measured energy trace for one LLM request", "full pipeline", "One call moves through Python client work, tokenization, RAM/VRAM, transformer inference, KV cache, sampling, and response parsing.", "The cards show active-device joules, latency, and VRAM for one measured run.", "wide"),
+            ("experiment_e_power_timeline.png", "GPU + CPU power timeline", "utilization trace", "Power is not constant during a request; spikes reveal load, inference, and idle phases.", "Use timelines to debug where energy is spent over time.", ""),
+            ("experiment_e_latency_trace.png", "Inference trace timeline", "observability", "Trace-style views turn an opaque LLM call into timed stages.", "Match slow stages to code paths or hardware bottlenecks.", ""),
+            ("experiment_e_energy_sankey.svg", "Sankey energy flow", "energy accounting", "Energy attribution needs a model of the request lifecycle.", "Sankey widths are explanatory; exact values come from the CSV columns.", ""),
+            ("memory_movement.svg", "Memory movement diagram", "CPU/RAM/GPU/VRAM", "Moving tokens, weights, and KV cache can be just as important as raw compute.", "Memory is often the hidden deployment constraint.", ""),
+        ],
+    }
+
+    def gallery(section: str) -> str:
+        return "\n".join(img_card(*item) for item in chart_sections[section])
+
+    downloads = "\n".join(
+        [
+            link_card("../metrics_enriched.csv", "Raw enriched metrics", "One row per benchmark request with latency slices, tokens, energy, memory, and scores.", "CSV"),
+            link_card("../summary_enriched.csv", "Summary metrics", "Grouped means by model, workload, quantization, and hardware.", "CSV"),
+            link_card("systems_tradeoffs_poster.pdf", "Printable poster PDF", "The compact PyCon version for printing or sharing.", "PDF"),
+            link_card("systems_tradeoffs_poster.html", "Poster HTML", "The generated print-ready HTML poster.", "HTML"),
+            link_card("experiment_e_energy_sankey.html", "Interactive Sankey", "Plotly HTML for the energy-flow view.", "HTML"),
+        ]
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LLM Cost &amp; Energy Field Guide Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {{
+      --navy:#17213b; --ink:#10182f; --body:#334155; --muted:#64748b; --line:#d6dde8;
+      --paper:#f6f8fb; --card:#ffffff; --blue:#2563eb; --green:#16a34a; --orange:#ea7a1a; --teal:#0e7490;
+      --shadow:0 18px 44px rgba(15,23,42,.08);
+    }}
+    * {{ box-sizing:border-box; }}
+    html {{ scroll-behavior:smooth; }}
+    body {{ margin:0; background:var(--paper); color:var(--body); font-family:Inter,system-ui,sans-serif; }}
+    a {{ color:inherit; }}
+    code {{ font-family:"JetBrains Mono",monospace; background:#eef2f7; padding:.12rem .35rem; border-radius:.25rem; }}
+    .shell {{ min-height:100vh; display:grid; grid-template-columns:280px minmax(0,1fr); }}
+    .sidebar {{ position:sticky; top:0; height:100vh; overflow:auto; background:var(--navy); color:#eef4ff; padding:22px 18px; }}
+    .brand {{ display:flex; gap:12px; align-items:center; margin-bottom:22px; }}
+    .brand img {{ width:62px; height:52px; object-fit:contain; }}
+    .brand b {{ display:block; font-size:14px; line-height:1.15; }}
+    .brand span {{ display:block; font-size:11px; color:#bac7dc; margin-top:3px; }}
+    .nav-group {{ margin:20px 0; }}
+    .nav-label {{ color:#91a4c1; font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin-bottom:8px; }}
+    .nav-btn {{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); color:#eef4ff; padding:10px 11px; border-radius:8px; margin:6px 0; font:700 13px/1.2 Inter,sans-serif; cursor:pointer; text-align:left; }}
+    .nav-btn:hover, .nav-btn.active {{ background:#ffffff; color:var(--navy); }}
+    .side-note {{ border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); border-radius:10px; padding:12px; color:#cbd7e9; font-size:12px; line-height:1.45; }}
+    .content {{ min-width:0; }}
+    .hero {{ background:linear-gradient(135deg,#ffffff 0%,#edf4ff 100%); padding:34px 44px 28px; border-bottom:1px solid var(--line); }}
+    .eyebrow {{ color:var(--orange); font-weight:900; letter-spacing:.09em; text-transform:uppercase; font-size:12px; }}
+    h1 {{ color:var(--ink); font-size:clamp(34px,4vw,62px); line-height:.98; letter-spacing:-.045em; margin:10px 0 14px; max-width:1050px; }}
+    .subtitle {{ max-width:980px; font-size:18px; line-height:1.45; color:#42526a; margin:0; }}
+    .theses {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:22px; max-width:1120px; }}
+    .thesis {{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }}
+    .thesis strong {{ display:block; color:var(--ink); font-size:15px; margin-bottom:6px; }}
+    .metrics-strip {{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:22px; max-width:980px; }}
+    .metric {{ background:var(--navy); color:#fff; border-radius:12px; padding:14px 16px; }}
+    .metric b {{ display:block; font-size:30px; line-height:1; }}
+    .metric span {{ display:block; color:#c7d3e8; font-size:12px; margin-top:5px; }}
+    .page {{ display:none; padding:34px 44px 56px; }}
+    .page.active {{ display:block; }}
+    .page-header {{ margin-bottom:28px; display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:24px; align-items:end; }}
+    .page h2 {{ color:var(--ink); font-size:34px; line-height:1.05; margin:0 0 8px; letter-spacing:-.025em; }}
+    .page-lede {{ font-size:16px; line-height:1.5; max-width:820px; margin:0; }}
+    .badge {{ display:inline-flex; align-items:center; width:max-content; color:#1e3a8a; background:#eaf2ff; border:1px solid #c8d9f6; border-radius:999px; padding:7px 10px; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }}
+    .grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }}
+    .grid.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+    .chart-card, .panel, .resource-card {{ background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); }}
+    .chart-card {{ padding:16px; display:flex; flex-direction:column; gap:10px; }}
+    .chart-card.wide {{ grid-column:1 / -1; }}
+    .chart-topline {{ display:flex; justify-content:space-between; color:#6b7b91; font-weight:900; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }}
+    .chart-card h3 {{ color:var(--ink); margin:0; font-size:20px; line-height:1.15; }}
+    .takeaway {{ margin:0; color:#1f2937; font-size:14px; line-height:1.45; font-weight:650; }}
+    .how {{ margin:0; color:var(--muted); font-size:13px; line-height:1.45; }}
+    figure {{ margin:0; border:1px solid #e2e8f0; background:#fff; border-radius:10px; padding:10px; }}
+    figure img {{ width:100%; max-height:580px; object-fit:contain; display:block; }}
+    .panel {{ padding:18px; }}
+    .panel h3 {{ margin:0 0 10px; color:var(--ink); font-size:20px; }}
+    .panel p {{ margin:0 0 12px; line-height:1.5; }}
+    table {{ width:100%; border-collapse:collapse; font-size:13px; background:#fff; }}
+    th, td {{ padding:10px 11px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; }}
+    th {{ color:#1f2a44; font-size:11px; text-transform:uppercase; letter-spacing:.06em; background:#f8fafc; }}
+    td small {{ display:block; color:var(--muted); margin-top:2px; }}
+    .bar {{ height:9px; background:#edf2f7; border-radius:999px; overflow:hidden; min-width:120px; }}
+    .bar i {{ display:block; height:100%; background:linear-gradient(90deg,var(--blue),var(--teal)); border-radius:999px; }}
+    .resource-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }}
+    .resource-card {{ display:block; text-decoration:none; padding:16px; }}
+    .resource-card span {{ display:inline-flex; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; color:#1e3a8a; background:#eaf2ff; border-radius:999px; padding:5px 8px; margin-bottom:12px; }}
+    .resource-card strong {{ display:block; color:var(--ink); font-size:17px; margin-bottom:6px; }}
+    .resource-card em {{ display:block; color:var(--muted); font-style:normal; font-size:13px; line-height:1.45; }}
+    .workload-cards {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }}
+    .workload-card {{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; }}
+    .workload-card b {{ color:var(--ink); display:block; margin-bottom:6px; }}
+    .workload-card span {{ color:var(--muted); font-size:12px; line-height:1.35; display:block; }}
+    .searchbar {{ display:flex; gap:10px; margin-bottom:12px; }}
+    .searchbar input, .searchbar select {{ border:1px solid var(--line); border-radius:9px; padding:10px 12px; font:500 14px Inter,sans-serif; background:#fff; color:var(--body); }}
+    .searchbar input {{ flex:1; }}
+    .data-table-wrap {{ max-height:620px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:#fff; }}
+    .data-table-wrap table {{ font-size:12px; }}
+    .footer {{ padding:22px 44px; background:var(--navy); color:#cad7ea; display:flex; justify-content:space-between; gap:20px; align-items:center; }}
+    .footer a {{ color:#fff; font-weight:800; }}
+    @media (max-width: 980px) {{
+      .shell {{ grid-template-columns:1fr; }}
+      .sidebar {{ position:relative; height:auto; }}
+      .page, .hero {{ padding:24px; }}
+      .page-header, .theses, .grid, .grid.three {{ grid-template-columns:1fr; }}
+      .metrics-strip, .workload-cards {{ grid-template-columns:repeat(2,1fr); }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="pycon-us-2026-logo.svg" alt="PyCon US 2026">
+        <div><b>LLM Cost &amp; Energy Field Guide</b><span>PyCon US companion dashboard</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Pages</div>
+        <button class="nav-btn active" data-page="overview">Overview <span>01</span></button>
+        <button class="nav-btn" data-page="workloads">Workloads <span>02</span></button>
+        <button class="nav-btn" data-page="learning1">Bigger Models <span>03</span></button>
+        <button class="nav-btn" data-page="learning2">Quantization <span>04</span></button>
+        <button class="nav-btn" data-page="learning3">No Winner <span>05</span></button>
+        <button class="nav-btn" data-page="hardware">CPU vs GPU <span>06</span></button>
+        <button class="nav-btn" data-page="systems">System Trace <span>07</span></button>
+        <button class="nav-btn" data-page="data">Data Explorer <span>08</span></button>
+        <button class="nav-btn" data-page="downloads">Downloads <span>09</span></button>
+      </div>
+      <div class="side-note">
+        Use this page as the expanded QR destination: it contains all generated charts, metric definitions, and summarized benchmark rows behind the print poster.
+      </div>
+    </aside>
+    <main class="content">
+      <section class="hero">
+        <div class="eyebrow">Visual Python Field Guide</div>
+        <h1>Cost &amp; Energy of Everyday LLM Workloads</h1>
+        <p class="subtitle">A reproducible systems benchmark for Python developers choosing local LLM deployments across model size, quantization, architecture, workload type, and CPU/GPU hardware.</p>
+        <div class="theses">
+          <div class="thesis"><strong>Core thesis</strong>The most accurate LLM is often not the most economically efficient one.</div>
+          <div class="thesis"><strong>Systems thesis</strong>LLM deployment is a systems engineering problem, not just a model-selection problem.</div>
+        </div>
+        <div class="metrics-strip">
+          <div class="metric"><b>{rows_count}</b><span>raw request rows</span></div>
+          <div class="metric"><b>{model_count}</b><span>model variants</span></div>
+          <div class="metric"><b>{workload_count}</b><span>workload families</span></div>
+          <div class="metric"><b>{hardware_count}</b><span>hardware profiles</span></div>
+        </div>
+      </section>
+
+      <section class="page active" id="page-overview">
+        <div class="page-header">
+          <div>
+            <span class="badge">Start here</span>
+            <h2>What This Dashboard Adds Beyond The Poster</h2>
+            <p class="page-lede">The poster tells the story in three learnings. This companion UI shows the evidence behind it: latency waterfalls, cost bars, active-device energy, scaling plots, quantization comparisons, CPU/GPU views, system traces, and the summarized data table.</p>
+          </div>
+          <div class="panel"><h3>Run context</h3><p>{esc(hardware_labels)}</p><p><code>metrics_enriched.csv</code> and <code>summary_enriched.csv</code> power this page.</p></div>
+        </div>
+        <div class="workload-cards">
+          <div class="workload-card"><b>Chat completion</b><span>Short interactive responses where latency and tokens/sec matter.</span></div>
+          <div class="workload-card"><b>Document summary</b><span>Longer prompts where prefill, KV cache, and output length show up.</span></div>
+          <div class="workload-card"><b>Classification-style prompts</b><span>Supported by the framework; use when outputs are short labels.</span></div>
+          <div class="workload-card"><b>RAG / semantic search</b><span>Ranking and retrieval pipelines add post-processing and embedding costs.</span></div>
+          <div class="workload-card"><b>Batch embeddings</b><span>Small batches can favor CPU; larger batches can amortize GPU overhead.</span></div>
+        </div>
+        <div class="grid" style="margin-top:18px">
+          <div class="panel">
+            <h3>What Gets Timed</h3>
+            <table>
+              <thead><tr><th>Slice</th><th>Meaning</th><th>Mean</th><th>Share</th></tr></thead>
+              <tbody>{latency_rows}</tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>How To Use The Evidence</h3>
+            <p><strong>Compare within an experimental slice.</strong> Same-family size charts answer parameter scaling. Same-model precision charts answer quantization. Workload charts answer model routing.</p>
+            <p><strong>Track tokens per joule.</strong> Accuracy alone hides the infrastructure cost of every generated token.</p>
+            <p><strong>Keep energy views honest.</strong> Active-device energy helps compare models; total wall energy is better for full-machine cost.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-workloads">
+        <div class="page-header"><div><span class="badge">Common workloads</span><h2>Latency, Cost, And Energy By Scenario</h2><p class="page-lede">These charts answer the first attendee question: “what does this call actually cost for chat, summarization, RAG-style search, and embeddings?”</p></div></div>
+        <div class="grid">{gallery("workloads")}</div>
+      </section>
+
+      <section class="page" id="page-learning1">
+        <div class="page-header"><div><span class="badge">Same architecture · different sizes</span><h2>Learning 1: Bigger Models Have Diminishing Returns</h2><p class="page-lede">This page isolates model size as much as possible. The goal is not to claim one model is universally smarter; it is to show when infrastructure cost rises faster than measured task quality.</p></div></div>
+        <div class="grid">{img_card(*chart_sections["poster"][0])}{img_card(*chart_sections["experiments"][0])}{img_card(*chart_sections["experiments"][1])}{img_card(*chart_sections["experiments"][2])}</div>
+      </section>
+
+      <section class="page" id="page-learning2">
+        <div class="page-header"><div><span class="badge">Same model · different precision</span><h2>Learning 2: Quantization Changes Deployment Economics</h2><p class="page-lede">Quantization changes representation efficiency, not the underlying model family. The useful question is whether q8 or q4 retains enough task quality while cutting memory, energy, and latency.</p></div></div>
+        <div class="grid">{img_card(*chart_sections["poster"][1])}{img_card(*chart_sections["experiments"][3])}{img_card(*chart_sections["experiments"][4])}</div>
+      </section>
+
+      <section class="page" id="page-learning3">
+        <div class="page-header"><div><span class="badge">Similar size · different workloads</span><h2>Learning 3: No Single Model Wins Every Workload</h2><p class="page-lede">“Best model” is the wrong question. Ask: best model for which workload, on which hardware, under what latency and energy budget?</p></div></div>
+        <div class="grid">{img_card(*chart_sections["poster"][2])}{img_card(*chart_sections["experiments"][5])}{img_card(*chart_sections["experiments"][6])}</div>
+        <div class="panel" style="margin-top:18px">
+          <h3>Measured Winners By Workload</h3>
+          <table><thead><tr><th>Workload</th><th>Highest score</th><th>Lowest active energy</th><th>Best active tokens/J</th></tr></thead><tbody>{workload_rows}</tbody></table>
+        </div>
+      </section>
+
+      <section class="page" id="page-hardware">
+        <div class="page-header"><div><span class="badge">Hardware scale</span><h2>CPU vs GPU: The Scale Inflection Point</h2><p class="page-lede">CPU can be perfectly reasonable for tiny local jobs. GPU wins once prompts, outputs, batching, concurrency, or latency requirements grow enough to amortize the device.</p></div></div>
+        <div class="grid">{img_card(*chart_sections["poster"][3])}{img_card(*chart_sections["experiments"][7])}{img_card(*chart_sections["experiments"][8])}</div>
+        <div class="grid" style="margin-top:18px">
+          <div class="panel"><h3>CPU tends to make sense for</h3><ul><li>single-user scripts and demos</li><li>tiny embedding batches</li><li>offline local tools</li><li>low request volume</li></ul></div>
+          <div class="panel"><h3>GPU tends to make sense for</h3><ul><li>long prompts and long outputs</li><li>batch embeddings</li><li>multi-user chat services</li><li>latency-sensitive or high-concurrency workloads</li></ul></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-systems">
+        <div class="page-header"><div><span class="badge">Full request pipeline</span><h2>System Trace, Energy Flow, And Memory Movement</h2><p class="page-lede">This is the observability view: where time, power, and memory pressure appear during one LLM request.</p></div></div>
+        <div class="grid">{gallery("systems")}</div>
+      </section>
+
+      <section class="page" id="page-data">
+        <div class="page-header"><div><span class="badge">Data explorer</span><h2>Every Summarized Benchmark Row</h2><p class="page-lede">Filter the summarized rows by model, family, quantization, hardware, or workload. This is the fastest way to answer “what should I run for my workload?”</p></div></div>
+        <div class="searchbar">
+          <input id="tableSearch" type="search" placeholder="Search model, workload, family, quantization..." />
+          <select id="workloadFilter"><option value="">All workloads</option></select>
+        </div>
+        <div class="data-table-wrap"><table id="dataTable"></table></div>
+      </section>
+
+      <section class="page" id="page-downloads">
+        <div class="page-header"><div><span class="badge">Reproducible artifacts</span><h2>Downloads, Poster, And Source Data</h2><p class="page-lede">Everything here is generated from the benchmark run. Attendees can inspect the plots, pull the CSVs, or rerun the Python scripts with their own endpoints.</p></div></div>
+        <div class="resource-grid">{downloads}</div>
+        <div class="grid" style="margin-top:18px">{img_card("poster_preview.png", "Printable poster preview", "poster", "The compact poster version for the PyCon session.", "Use the dashboard for details; use the poster for the hallway story.", "wide")}</div>
+      </section>
+
+      <footer class="footer">
+        <span>Open repository: <a href="https://github.com/shivaylamba/pycon-2026-poster">github.com/shivaylamba/pycon-2026-poster</a></span>
+        <span>Inspired by Alizadeh et al., arXiv:2412.00329</span>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    const rows = {explorer_json};
+    const buttons = Array.from(document.querySelectorAll('.nav-btn'));
+    const pages = Array.from(document.querySelectorAll('.page'));
+    function showPage(id) {{
+      buttons.forEach(btn => btn.classList.toggle('active', btn.dataset.page === id));
+      pages.forEach(page => page.classList.toggle('active', page.id === `page-${{id}}`));
+      window.scrollTo({{ top: 0, behavior: 'smooth' }});
+    }}
+    buttons.forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
+
+    const table = document.getElementById('dataTable');
+    const search = document.getElementById('tableSearch');
+    const workloadFilter = document.getElementById('workloadFilter');
+    const columns = [
+      ['model_label', 'Model'], ['workload', 'Workload'], ['hardware_profile', 'Hardware'],
+      ['params_b', 'B'], ['quantization', 'Quant'], ['score', 'Score'], ['total_latency_s', 'Latency s'],
+      ['active_device_energy_j', 'Active J'], ['active_tokens_per_joule', 'Tok/J'],
+      ['gpu_mem_peak_mb', 'Peak VRAM MB'], ['cost_per_request_usd', 'Cost/request']
+    ];
+    function unique(values) {{ return Array.from(new Set(values.filter(Boolean))).sort(); }}
+    unique(rows.map(row => row.workload)).forEach(workload => {{
+      const option = document.createElement('option');
+      option.value = workload;
+      option.textContent = workload.replaceAll('_', ' ');
+      workloadFilter.appendChild(option);
+    }});
+    function formatCell(value, key) {{
+      if (value === null || value === undefined || Number.isNaN(value)) return 'n/a';
+      if (typeof value === 'number') {{
+        if (key === 'cost_per_request_usd') return '$' + value.toFixed(6);
+        if (['score','total_latency_s','active_tokens_per_joule'].includes(key)) return value.toFixed(2);
+        if (['active_device_energy_j','gpu_mem_peak_mb'].includes(key)) return Math.round(value).toLocaleString();
+        return value.toString();
+      }}
+      return String(value).replaceAll('_', ' ');
+    }}
+    function renderTable() {{
+      const term = search.value.trim().toLowerCase();
+      const workload = workloadFilter.value;
+      const filtered = rows.filter(row => {{
+        const text = Object.values(row).join(' ').toLowerCase();
+        return (!term || text.includes(term)) && (!workload || row.workload === workload);
+      }});
+      const head = '<thead><tr>' + columns.map(([, label]) => `<th>${{label}}</th>`).join('') + '</tr></thead>';
+      const body = '<tbody>' + filtered.map(row => '<tr>' + columns.map(([key]) => `<td>${{formatCell(row[key], key)}}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      table.innerHTML = head + body;
+    }}
+    search.addEventListener('input', renderTable);
+    workloadFilter.addEventListener('change', renderTable);
+    renderTable();
+  </script>
 </body>
 </html>"""
     path.write_text(html, encoding="utf-8")

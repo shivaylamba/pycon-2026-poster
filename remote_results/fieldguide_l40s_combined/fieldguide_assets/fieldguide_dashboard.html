@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LLM Cost &amp; Energy Field Guide Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy:#17213b; --ink:#10182f; --body:#334155; --muted:#64748b; --line:#d6dde8;
+      --paper:#f6f8fb; --card:#ffffff; --blue:#2563eb; --green:#16a34a; --orange:#ea7a1a; --teal:#0e7490;
+      --shadow:0 18px 44px rgba(15,23,42,.08);
+    }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--paper); color:var(--body); font-family:Inter,system-ui,sans-serif; }
+    a { color:inherit; }
+    code { font-family:"JetBrains Mono",monospace; background:#eef2f7; padding:.12rem .35rem; border-radius:.25rem; }
+    .shell { min-height:100vh; display:grid; grid-template-columns:280px minmax(0,1fr); }
+    .sidebar { position:sticky; top:0; height:100vh; overflow:auto; background:var(--navy); color:#eef4ff; padding:22px 18px; }
+    .brand { display:flex; gap:12px; align-items:center; margin-bottom:22px; }
+    .brand img { width:62px; height:52px; object-fit:contain; }
+    .brand b { display:block; font-size:14px; line-height:1.15; }
+    .brand span { display:block; font-size:11px; color:#bac7dc; margin-top:3px; }
+    .nav-group { margin:20px 0; }
+    .nav-label { color:#91a4c1; font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin-bottom:8px; }
+    .nav-btn { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.05); color:#eef4ff; padding:10px 11px; border-radius:8px; margin:6px 0; font:700 13px/1.2 Inter,sans-serif; cursor:pointer; text-align:left; }
+    .nav-btn:hover, .nav-btn.active { background:#ffffff; color:var(--navy); }
+    .side-note { border:1px solid rgba(255,255,255,.14); background:rgba(255,255,255,.06); border-radius:10px; padding:12px; color:#cbd7e9; font-size:12px; line-height:1.45; }
+    .content { min-width:0; }
+    .hero { background:linear-gradient(135deg,#ffffff 0%,#edf4ff 100%); padding:34px 44px 28px; border-bottom:1px solid var(--line); }
+    .eyebrow { color:var(--orange); font-weight:900; letter-spacing:.09em; text-transform:uppercase; font-size:12px; }
+    h1 { color:var(--ink); font-size:clamp(34px,4vw,62px); line-height:.98; letter-spacing:-.045em; margin:10px 0 14px; max-width:1050px; }
+    .subtitle { max-width:980px; font-size:18px; line-height:1.45; color:#42526a; margin:0; }
+    .theses { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:22px; max-width:1120px; }
+    .thesis { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); }
+    .thesis strong { display:block; color:var(--ink); font-size:15px; margin-bottom:6px; }
+    .metrics-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:22px; max-width:980px; }
+    .metric { background:var(--navy); color:#fff; border-radius:12px; padding:14px 16px; }
+    .metric b { display:block; font-size:30px; line-height:1; }
+    .metric span { display:block; color:#c7d3e8; font-size:12px; margin-top:5px; }
+    .page { display:none; padding:34px 44px 56px; }
+    .page.active { display:block; }
+    .page-header { margin-bottom:28px; display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:24px; align-items:end; }
+    .page h2 { color:var(--ink); font-size:34px; line-height:1.05; margin:0 0 8px; letter-spacing:-.025em; }
+    .page-lede { font-size:16px; line-height:1.5; max-width:820px; margin:0; }
+    .badge { display:inline-flex; align-items:center; width:max-content; color:#1e3a8a; background:#eaf2ff; border:1px solid #c8d9f6; border-radius:999px; padding:7px 10px; font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+    .grid.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .chart-card, .panel, .resource-card { background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); }
+    .chart-card { padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .chart-card.wide { grid-column:1 / -1; }
+    .chart-topline { display:flex; justify-content:space-between; color:#6b7b91; font-weight:900; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+    .chart-card h3 { color:var(--ink); margin:0; font-size:20px; line-height:1.15; }
+    .takeaway { margin:0; color:#1f2937; font-size:14px; line-height:1.45; font-weight:650; }
+    .how { margin:0; color:var(--muted); font-size:13px; line-height:1.45; }
+    figure { margin:0; border:1px solid #e2e8f0; background:#fff; border-radius:10px; padding:10px; }
+    figure img { width:100%; max-height:580px; object-fit:contain; display:block; }
+    .panel { padding:18px; }
+    .panel h3 { margin:0 0 10px; color:var(--ink); font-size:20px; }
+    .panel p { margin:0 0 12px; line-height:1.5; }
+    table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+    th, td { padding:10px 11px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; }
+    th { color:#1f2a44; font-size:11px; text-transform:uppercase; letter-spacing:.06em; background:#f8fafc; }
+    td small { display:block; color:var(--muted); margin-top:2px; }
+    .bar { height:9px; background:#edf2f7; border-radius:999px; overflow:hidden; min-width:120px; }
+    .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--blue),var(--teal)); border-radius:999px; }
+    .resource-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+    .resource-card { display:block; text-decoration:none; padding:16px; }
+    .resource-card span { display:inline-flex; font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; color:#1e3a8a; background:#eaf2ff; border-radius:999px; padding:5px 8px; margin-bottom:12px; }
+    .resource-card strong { display:block; color:var(--ink); font-size:17px; margin-bottom:6px; }
+    .resource-card em { display:block; color:var(--muted); font-style:normal; font-size:13px; line-height:1.45; }
+    .workload-cards { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; }
+    .workload-card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; }
+    .workload-card b { color:var(--ink); display:block; margin-bottom:6px; }
+    .workload-card span { color:var(--muted); font-size:12px; line-height:1.35; display:block; }
+    .searchbar { display:flex; gap:10px; margin-bottom:12px; }
+    .searchbar input, .searchbar select { border:1px solid var(--line); border-radius:9px; padding:10px 12px; font:500 14px Inter,sans-serif; background:#fff; color:var(--body); }
+    .searchbar input { flex:1; }
+    .data-table-wrap { max-height:620px; overflow:auto; border:1px solid var(--line); border-radius:12px; background:#fff; }
+    .data-table-wrap table { font-size:12px; }
+    .footer { padding:22px 44px; background:var(--navy); color:#cad7ea; display:flex; justify-content:space-between; gap:20px; align-items:center; }
+    .footer a { color:#fff; font-weight:800; }
+    @media (max-width: 980px) {
+      .shell { grid-template-columns:1fr; }
+      .sidebar { position:relative; height:auto; }
+      .page, .hero { padding:24px; }
+      .page-header, .theses, .grid, .grid.three { grid-template-columns:1fr; }
+      .metrics-strip, .workload-cards { grid-template-columns:repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="pycon-us-2026-logo.svg" alt="PyCon US 2026">
+        <div><b>LLM Cost &amp; Energy Field Guide</b><span>PyCon US companion dashboard</span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Pages</div>
+        <button class="nav-btn active" data-page="overview">Overview <span>01</span></button>
+        <button class="nav-btn" data-page="workloads">Workloads <span>02</span></button>
+        <button class="nav-btn" data-page="learning1">Bigger Models <span>03</span></button>
+        <button class="nav-btn" data-page="learning2">Quantization <span>04</span></button>
+        <button class="nav-btn" data-page="learning3">No Winner <span>05</span></button>
+        <button class="nav-btn" data-page="hardware">CPU vs GPU <span>06</span></button>
+        <button class="nav-btn" data-page="systems">System Trace <span>07</span></button>
+        <button class="nav-btn" data-page="data">Data Explorer <span>08</span></button>
+        <button class="nav-btn" data-page="downloads">Downloads <span>09</span></button>
+      </div>
+      <div class="side-note">
+        Use this page as the expanded QR destination: it contains all generated charts, metric definitions, and summarized benchmark rows behind the print poster.
+      </div>
+    </aside>
+    <main class="content">
+      <section class="hero">
+        <div class="eyebrow">Visual Python Field Guide</div>
+        <h1>Cost &amp; Energy of Everyday LLM Workloads</h1>
+        <p class="subtitle">A reproducible systems benchmark for Python developers choosing local LLM deployments across model size, quantization, architecture, workload type, and CPU/GPU hardware.</p>
+        <div class="theses">
+          <div class="thesis"><strong>Core thesis</strong>The most accurate LLM is often not the most economically efficient one.</div>
+          <div class="thesis"><strong>Systems thesis</strong>LLM deployment is a systems engineering problem, not just a model-selection problem.</div>
+        </div>
+        <div class="metrics-strip">
+          <div class="metric"><b>234</b><span>raw request rows</span></div>
+          <div class="metric"><b>19</b><span>model variants</span></div>
+          <div class="metric"><b>5</b><span>workload families</span></div>
+          <div class="metric"><b>2</b><span>hardware profiles</span></div>
+        </div>
+      </section>
+
+      <section class="page active" id="page-overview">
+        <div class="page-header">
+          <div>
+            <span class="badge">Start here</span>
+            <h2>What This Dashboard Adds Beyond The Poster</h2>
+            <p class="page-lede">The poster tells the story in three learnings. This companion UI shows the evidence behind it: latency waterfalls, cost bars, active-device energy, scaling plots, quantization comparisons, CPU/GPU views, system traces, and the summarized data table.</p>
+          </div>
+          <div class="panel"><h3>Run context</h3><p>CPU only, L40S GPU</p><p><code>metrics_enriched.csv</code> and <code>summary_enriched.csv</code> power this page.</p></div>
+        </div>
+        <div class="workload-cards">
+          <div class="workload-card"><b>Chat completion</b><span>Short interactive responses where latency and tokens/sec matter.</span></div>
+          <div class="workload-card"><b>Document summary</b><span>Longer prompts where prefill, KV cache, and output length show up.</span></div>
+          <div class="workload-card"><b>Classification-style prompts</b><span>Supported by the framework; use when outputs are short labels.</span></div>
+          <div class="workload-card"><b>RAG / semantic search</b><span>Ranking and retrieval pipelines add post-processing and embedding costs.</span></div>
+          <div class="workload-card"><b>Batch embeddings</b><span>Small batches can favor CPU; larger batches can amortize GPU overhead.</span></div>
+        </div>
+        <div class="grid" style="margin-top:18px">
+          <div class="panel">
+            <h3>What Gets Timed</h3>
+            <table>
+              <thead><tr><th>Slice</th><th>Meaning</th><th>Mean</th><th>Share</th></tr></thead>
+              <tbody>
+              <tr>
+                <td>Network</td>
+                <td>client/API overhead</td>
+                <td>0.030s avg</td>
+                <td><div class="bar"><i style="width:1.5%"></i></div></td>
+              </tr>
+              <tr>
+                <td>Tokenization / prefill</td>
+                <td>prompt processing</td>
+                <td>0.152s avg</td>
+                <td><div class="bar"><i style="width:7.7%"></i></div></td>
+              </tr>
+              <tr>
+                <td>Inference</td>
+                <td>model generation</td>
+                <td>1.798s avg</td>
+                <td><div class="bar"><i style="width:90.7%"></i></div></td>
+              </tr>
+              <tr>
+                <td>Post-processing</td>
+                <td>parse, rank, serialize</td>
+                <td>0.002s avg</td>
+                <td><div class="bar"><i style="width:0.1%"></i></div></td>
+              </tr></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>How To Use The Evidence</h3>
+            <p><strong>Compare within an experimental slice.</strong> Same-family size charts answer parameter scaling. Same-model precision charts answer quantization. Workload charts answer model routing.</p>
+            <p><strong>Track tokens per joule.</strong> Accuracy alone hides the infrastructure cost of every generated token.</p>
+            <p><strong>Keep energy views honest.</strong> Active-device energy helps compare models; total wall energy is better for full-machine cost.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-workloads">
+        <div class="page-header"><div><span class="badge">Common workloads</span><h2>Latency, Cost, And Energy By Scenario</h2><p class="page-lede">These charts answer the first attendee question: “what does this call actually cost for chat, summarization, RAG-style search, and embeddings?”</p></div></div>
+        <div class="grid">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>measured slices</span></div>
+          <h3>Chat latency waterfall</h3>
+          <p class="takeaway">A single chat call has client, prefill, inference, and post-processing pieces.</p>
+          <figure><img src="latency_waterfall_chat.png" alt="Chat latency waterfall"></figure>
+          <p class="how">The waterfall shows where time accumulates before the response is done.</p>
+        </article>
+
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>measured slices</span></div>
+          <h3>Summarization latency waterfall</h3>
+          <p class="takeaway">Long documents make prefill and generation more visible than small chat prompts.</p>
+          <figure><img src="latency_waterfall_summarization.png" alt="Summarization latency waterfall"></figure>
+          <p class="how">Use this to explain why document workflows feel different from chat.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>cost estimate</span></div>
+          <h3>Chat cost bars</h3>
+          <p class="takeaway">Cost per request and cost per 1,000 tokens can tell different stories.</p>
+          <figure><img src="cost_bars_chat.png" alt="Chat cost bars"></figure>
+          <p class="how">Use the two panels together; low per-request cost can still hide inefficient token economics.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>joules/request</span></div>
+          <h3>Active-device energy: chat</h3>
+          <p class="takeaway">Small chat prompts expose overheads and short-output behavior.</p>
+          <figure><img src="energy_active_device_chat.png" alt="Active-device energy: chat"></figure>
+          <p class="how">Lower bars use less active-device energy for this workload.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>joules/request</span></div>
+          <h3>Active-device energy: summarization</h3>
+          <p class="takeaway">Longer inputs and outputs reveal bigger model and hardware differences.</p>
+          <figure><img src="energy_active_device_summarization.png" alt="Active-device energy: summarization"></figure>
+          <p class="how">Compare CPU and GPU rows as active-device estimates, not full wall energy.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>small-batch counterexample</span></div>
+          <h3>Active-device energy: batch embeddings</h3>
+          <p class="takeaway">Tiny embedding batches may not amortize GPU overhead.</p>
+          <figure><img src="energy_active_device_batch_embeddings.png" alt="Active-device energy: batch embeddings"></figure>
+          <p class="how">Increase batch size before assuming the GPU is cheaper.</p>
+        </article>
+
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>hardware comparison</span></div>
+          <h3>CPU vs GPU latency slices</h3>
+          <p class="takeaway">The same pipeline can bottleneck differently on CPU and GPU.</p>
+          <figure><img src="experiment_d_latency_waterfall.png" alt="CPU vs GPU latency slices"></figure>
+          <p class="how">Look for the largest colored segment; that is where optimization should start.</p>
+        </article></div>
+      </section>
+
+      <section class="page" id="page-learning1">
+        <div class="page-header"><div><span class="badge">Same architecture · different sizes</span><h2>Learning 1: Bigger Models Have Diminishing Returns</h2><p class="page-lede">This page isolates model size as much as possible. The goal is not to claim one model is universally smarter; it is to show when infrastructure cost rises faster than measured task quality.</p></div></div>
+        <div class="grid">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>same architecture</span></div>
+          <h3>Learning 1: Bigger models have diminishing returns</h3>
+          <p class="takeaway">Same-family size comparisons reveal where quality flattens but energy, latency, or VRAM keep rising.</p>
+          <figure><img src="learning1_scaling_tradeoffs.png" alt="Learning 1: Bigger models have diminishing returns"></figure>
+          <p class="how">Read each family line left-to-right; lower energy/latency/VRAM is better, higher toy score is better.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>size isolation</span></div>
+          <h3>Experiment A: model size scaling</h3>
+          <p class="takeaway">Same-family scaling isolates parameter-count effects as much as the run allows.</p>
+          <figure><img src="experiment_a_scaling_curves.png" alt="Experiment A: model size scaling"></figure>
+          <p class="how">Use for the model-size story behind Learning 1.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>pareto view</span></div>
+          <h3>Energy vs accuracy frontier</h3>
+          <p class="takeaway">The best practical model may be the one closest to the low-energy/high-quality frontier.</p>
+          <figure><img src="energy_accuracy_frontier.png" alt="Energy vs accuracy frontier"></figure>
+          <p class="how">Models far from the frontier are dominated for this run.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>architecture intuition</span></div>
+          <h3>Expanding transformer diagram</h3>
+          <p class="takeaway">More layers, larger KV cache, and more attention compute increase infrastructure pressure.</p>
+          <figure><img src="expanding_transformer.svg" alt="Expanding transformer diagram"></figure>
+          <p class="how">This is explanatory, not a benchmark measurement.</p>
+        </article></div>
+      </section>
+
+      <section class="page" id="page-learning2">
+        <div class="page-header"><div><span class="badge">Same model · different precision</span><h2>Learning 2: Quantization Changes Deployment Economics</h2><p class="page-lede">Quantization changes representation efficiency, not the underlying model family. The useful question is whether q8 or q4 retains enough task quality while cutting memory, energy, and latency.</p></div></div>
+        <div class="grid">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>same model</span></div>
+          <h3>Learning 2: Quantization changes economics</h3>
+          <p class="takeaway">FP16 is the 100% baseline; q8/q4 show how representation changes deployment cost.</p>
+          <figure><img src="learning2_quantization_tradeoffs.png" alt="Learning 2: Quantization changes economics"></figure>
+          <p class="how">Left panel costs should go down; right panel benefits should stay high or rise.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>precision isolation</span></div>
+          <h3>Experiment B: quantization comparison</h3>
+          <p class="takeaway">Same model, different precision separates compression effects from architecture effects.</p>
+          <figure><img src="experiment_b_quantization.png" alt="Experiment B: quantization comparison"></figure>
+          <p class="how">Use this with the q4/q8/fp16 chart to explain why memory movement matters.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>efficiency deltas</span></div>
+          <h3>Quantization efficiency waterfall</h3>
+          <p class="takeaway">Compression can shift VRAM, latency, energy, and throughput simultaneously.</p>
+          <figure><img src="experiment_b_efficiency_waterfall.png" alt="Quantization efficiency waterfall"></figure>
+          <p class="how">Read as a relative savings/contribution view.</p>
+        </article></div>
+      </section>
+
+      <section class="page" id="page-learning3">
+        <div class="page-header"><div><span class="badge">Similar size · different workloads</span><h2>Learning 3: No Single Model Wins Every Workload</h2><p class="page-lede">“Best model” is the wrong question. Ask: best model for which workload, on which hardware, under what latency and energy budget?</p></div></div>
+        <div class="grid">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>common workloads</span></div>
+          <h3>Learning 3: Energy depends on workload</h3>
+          <p class="takeaway">Chat, summaries, RAG-style search, and embeddings do not stress the same parts of the stack.</p>
+          <figure><img src="workload_active_device_energy.png" alt="Learning 3: Energy depends on workload"></figure>
+          <p class="how">Compare within a panel, not across every panel; lower joules means less active-device energy.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>architecture/workload</span></div>
+          <h3>Experiment C: workload heatmap</h3>
+          <p class="takeaway">Similar-size models can specialize differently by workload.</p>
+          <figure><img src="experiment_c_workload_heatmap.png" alt="Experiment C: workload heatmap"></figure>
+          <p class="how">Rows are models, columns are tasks; color is measured task score.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>model profile</span></div>
+          <h3>Experiment C: radar chart</h3>
+          <p class="takeaway">Radar charts make model tradeoffs visible across several metrics at once.</p>
+          <figure><img src="experiment_c_radar.png" alt="Experiment C: radar chart"></figure>
+          <p class="how">No single spoke is enough to select a deployment.</p>
+        </article></div>
+        <div class="panel" style="margin-top:18px">
+          <h3>Measured Winners By Workload</h3>
+          <table><thead><tr><th>Workload</th><th>Highest score</th><th>Lowest active energy</th><th>Best active tokens/J</th></tr></thead><tbody>
+              <tr>
+                <td>Chat</td>
+                <td>Granite Code 3B Q4 <small>0.89</small></td>
+                <td>Gemma 2B Q4 <small>95J</small></td>
+                <td>Gemma 2B Q4 <small>1.35 tok/J</small></td>
+              </tr>
+              <tr>
+                <td>Code</td>
+                <td>Granite Code 8B Q4 <small>0.67</small></td>
+                <td>Granite Code 8B Q4 <small>235J</small></td>
+                <td>Granite Code 3B Q4 <small>1.51 tok/J</small></td>
+              </tr>
+              <tr>
+                <td>Embeddings</td>
+                <td>mxbai Embed Large <small>1.00</small></td>
+                <td>mxbai Embed Large <small>79J</small></td>
+                <td>mxbai Embed Large <small>1.23 tok/J</small></td>
+              </tr>
+              <tr>
+                <td>RAG</td>
+                <td>Phi-3 3.8B Q4 <small>1.00</small></td>
+                <td>Gemma 2B Q4 <small>21J</small></td>
+                <td>CodeLlama 7B Q4 <small>1.01 tok/J</small></td>
+              </tr>
+              <tr>
+                <td>Summary</td>
+                <td>Gemma 2B Q4 <small>1.00</small></td>
+                <td>Gemma 2B Q4 <small>55J</small></td>
+                <td>Gemma 2B Q4 <small>1.35 tok/J</small></td>
+              </tr></tbody></table>
+        </div>
+      </section>
+
+      <section class="page" id="page-hardware">
+        <div class="page-header"><div><span class="badge">Hardware scale</span><h2>CPU vs GPU: The Scale Inflection Point</h2><p class="page-lede">CPU can be perfectly reasonable for tiny local jobs. GPU wins once prompts, outputs, batching, concurrency, or latency requirements grow enough to amortize the device.</p></div></div>
+        <div class="grid">
+        <article class="chart-card">
+          <div class="chart-topline"><span>conceptual heuristic</span></div>
+          <h3>CPU vs GPU scale inflection point</h3>
+          <p class="takeaway">Hardware choice changes when batch size, concurrency, prompt length, or output length grows.</p>
+          <figure><img src="learning3_cpu_gpu_tradeoff.png" alt="CPU vs GPU scale inflection point"></figure>
+          <p class="how">This is a deployment heuristic, not a measured concurrency benchmark.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>hardware</span></div>
+          <h3>Experiment D: CPU vs GPU throughput</h3>
+          <p class="takeaway">GPU advantage depends on model, workload shape, and batching.</p>
+          <figure><img src="experiment_d_cpu_gpu.png" alt="Experiment D: CPU vs GPU throughput"></figure>
+          <p class="how">Treat single-request latency separately from throughput.</p>
+        </article>
+        <article class="chart-card">
+          <div class="chart-topline"><span>scale</span></div>
+          <h3>Experiment D: concurrency heuristic</h3>
+          <p class="takeaway">Concurrency changes the economics because the GPU can amortize work.</p>
+          <figure><img src="experiment_d_concurrency.png" alt="Experiment D: concurrency heuristic"></figure>
+          <p class="how">Use this as the systems argument, not a one-off latency claim.</p>
+        </article></div>
+        <div class="grid" style="margin-top:18px">
+          <div class="panel"><h3>CPU tends to make sense for</h3><ul><li>single-user scripts and demos</li><li>tiny embedding batches</li><li>offline local tools</li><li>low request volume</li></ul></div>
+          <div class="panel"><h3>GPU tends to make sense for</h3><ul><li>long prompts and long outputs</li><li>batch embeddings</li><li>multi-user chat services</li><li>latency-sensitive or high-concurrency workloads</li></ul></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-systems">
+        <div class="page-header"><div><span class="badge">Full request pipeline</span><h2>System Trace, Energy Flow, And Memory Movement</h2><p class="page-lede">This is the observability view: where time, power, and memory pressure appear during one LLM request.</p></div></div>
+        <div class="grid">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>full pipeline</span></div>
+          <h3>Measured energy trace for one LLM request</h3>
+          <p class="takeaway">One call moves through Python client work, tokenization, RAM/VRAM, transformer inference, KV cache, sampling, and response parsing.</p>
+          <figure><img src="request_lifecycle.svg" alt="Measured energy trace for one LLM request"></figure>
+          <p class="how">The cards show active-device joules, latency, and VRAM for one measured run.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>utilization trace</span></div>
+          <h3>GPU + CPU power timeline</h3>
+          <p class="takeaway">Power is not constant during a request; spikes reveal load, inference, and idle phases.</p>
+          <figure><img src="experiment_e_power_timeline.png" alt="GPU + CPU power timeline"></figure>
+          <p class="how">Use timelines to debug where energy is spent over time.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>observability</span></div>
+          <h3>Inference trace timeline</h3>
+          <p class="takeaway">Trace-style views turn an opaque LLM call into timed stages.</p>
+          <figure><img src="experiment_e_latency_trace.png" alt="Inference trace timeline"></figure>
+          <p class="how">Match slow stages to code paths or hardware bottlenecks.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>energy accounting</span></div>
+          <h3>Sankey energy flow</h3>
+          <p class="takeaway">Energy attribution needs a model of the request lifecycle.</p>
+          <figure><img src="experiment_e_energy_sankey.svg" alt="Sankey energy flow"></figure>
+          <p class="how">Sankey widths are explanatory; exact values come from the CSV columns.</p>
+        </article>
+
+        <article class="chart-card">
+          <div class="chart-topline"><span>CPU/RAM/GPU/VRAM</span></div>
+          <h3>Memory movement diagram</h3>
+          <p class="takeaway">Moving tokens, weights, and KV cache can be just as important as raw compute.</p>
+          <figure><img src="memory_movement.svg" alt="Memory movement diagram"></figure>
+          <p class="how">Memory is often the hidden deployment constraint.</p>
+        </article></div>
+      </section>
+
+      <section class="page" id="page-data">
+        <div class="page-header"><div><span class="badge">Data explorer</span><h2>Every Summarized Benchmark Row</h2><p class="page-lede">Filter the summarized rows by model, family, quantization, hardware, or workload. This is the fastest way to answer “what should I run for my workload?”</p></div></div>
+        <div class="searchbar">
+          <input id="tableSearch" type="search" placeholder="Search model, workload, family, quantization..." />
+          <select id="workloadFilter"><option value="">All workloads</option></select>
+        </div>
+        <div class="data-table-wrap"><table id="dataTable"></table></div>
+      </section>
+
+      <section class="page" id="page-downloads">
+        <div class="page-header"><div><span class="badge">Reproducible artifacts</span><h2>Downloads, Poster, And Source Data</h2><p class="page-lede">Everything here is generated from the benchmark run. Attendees can inspect the plots, pull the CSVs, or rerun the Python scripts with their own endpoints.</p></div></div>
+        <div class="resource-grid">
+        <a class="resource-card" href="../metrics_enriched.csv">
+          <span>CSV</span>
+          <strong>Raw enriched metrics</strong>
+          <em>One row per benchmark request with latency slices, tokens, energy, memory, and scores.</em>
+        </a>
+
+        <a class="resource-card" href="../summary_enriched.csv">
+          <span>CSV</span>
+          <strong>Summary metrics</strong>
+          <em>Grouped means by model, workload, quantization, and hardware.</em>
+        </a>
+
+        <a class="resource-card" href="systems_tradeoffs_poster.pdf">
+          <span>PDF</span>
+          <strong>Printable poster PDF</strong>
+          <em>The compact PyCon version for printing or sharing.</em>
+        </a>
+
+        <a class="resource-card" href="systems_tradeoffs_poster.html">
+          <span>HTML</span>
+          <strong>Poster HTML</strong>
+          <em>The generated print-ready HTML poster.</em>
+        </a>
+
+        <a class="resource-card" href="experiment_e_energy_sankey.html">
+          <span>HTML</span>
+          <strong>Interactive Sankey</strong>
+          <em>Plotly HTML for the energy-flow view.</em>
+        </a></div>
+        <div class="grid" style="margin-top:18px">
+        <article class="chart-card wide">
+          <div class="chart-topline"><span>poster</span></div>
+          <h3>Printable poster preview</h3>
+          <p class="takeaway">The compact poster version for the PyCon session.</p>
+          <figure><img src="poster_preview.png" alt="Printable poster preview"></figure>
+          <p class="how">Use the dashboard for details; use the poster for the hallway story.</p>
+        </article></div>
+      </section>
+
+      <footer class="footer">
+        <span>Open repository: <a href="https://github.com/shivaylamba/pycon-2026-poster">github.com/shivaylamba/pycon-2026-poster</a></span>
+        <span>Inspired by Alizadeh et al., arXiv:2412.00329</span>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    const rows = [{"model_label": "CodeLlama 13B Q4", "family": "CodeLlama", "params_b": 13.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.7778, "total_latency_s": 1.8002, "active_device_energy_j": 503.4694, "active_tokens_per_joule": 0.2784, "gpu_mem_peak_mb": 21536.625, "cost_per_request_usd": 0.0008, "input_tokens": 26.6667, "output_tokens": 140.0}, {"model_label": "CodeLlama 13B Q4", "family": "CodeLlama", "params_b": 13.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.0, "total_latency_s": 4.8001, "active_device_energy_j": 752.7542, "active_tokens_per_joule": 0.2509, "gpu_mem_peak_mb": 21535.9583, "cost_per_request_usd": 0.002, "input_tokens": 52.3333, "output_tokens": 180.0}, {"model_label": "CodeLlama 13B Q4", "family": "CodeLlama", "params_b": 13.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.3515, "active_device_energy_j": 87.648, "active_tokens_per_joule": 0.274, "gpu_mem_peak_mb": 21536.625, "cost_per_request_usd": 0.0002, "input_tokens": 143.0, "output_tokens": 24.0}, {"model_label": "CodeLlama 13B Q4", "family": "CodeLlama", "params_b": 13.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 1.9226, "active_device_energy_j": 552.6303, "active_tokens_per_joule": 0.2715, "gpu_mem_peak_mb": 21536.625, "cost_per_request_usd": 0.0008, "input_tokens": 79.3333, "output_tokens": 150.0}, {"model_label": "CodeLlama 7B FP16", "family": "CodeLlama", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.5556, "total_latency_s": 2.6935, "active_device_energy_j": 593.7242, "active_tokens_per_joule": 0.2358, "gpu_mem_peak_mb": 22098.625, "cost_per_request_usd": 0.0012, "input_tokens": 26.6667, "output_tokens": 140.0}, {"model_label": "CodeLlama 7B FP16", "family": "CodeLlama", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.0, "total_latency_s": 7.0848, "active_device_energy_j": 853.5683, "active_tokens_per_joule": 0.1177, "gpu_mem_peak_mb": 22098.625, "cost_per_request_usd": 0.003, "input_tokens": 35.0, "output_tokens": 120.0}, {"model_label": "CodeLlama 7B FP16", "family": "CodeLlama", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 1.1723, "active_device_energy_j": 127.9944, "active_tokens_per_joule": 0.2938, "gpu_mem_peak_mb": 22098.625, "cost_per_request_usd": 0.0005, "input_tokens": 143.0, "output_tokens": 24.0}, {"model_label": "CodeLlama 7B FP16", "family": "CodeLlama", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.25, "total_latency_s": 2.88, "active_device_energy_j": 641.6845, "active_tokens_per_joule": 0.2338, "gpu_mem_peak_mb": 22098.625, "cost_per_request_usd": 0.0012, "input_tokens": 79.3333, "output_tokens": 150.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "cpu", "workload": "chat_completion", "score": 0.7778, "total_latency_s": 15.4393, "active_device_energy_j": 1039.365, "active_tokens_per_joule": 0.1347, "gpu_mem_peak_mb": 610.4375, "cost_per_request_usd": 0.0009, "input_tokens": 26.6667, "output_tokens": 140.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "cpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 22.5741, "active_device_energy_j": 1335.7024, "active_tokens_per_joule": 0.1348, "gpu_mem_peak_mb": 4846.5, "cost_per_request_usd": 0.0014, "input_tokens": 52.3333, "output_tokens": 180.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "cpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 4.1612, "active_device_energy_j": 297.3851, "active_tokens_per_joule": 0.0981, "gpu_mem_peak_mb": 610.4375, "cost_per_request_usd": 0.0003, "input_tokens": 143.0, "output_tokens": 24.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "cpu", "workload": "summarization", "score": 0.3333, "total_latency_s": 17.7138, "active_device_energy_j": 1180.8985, "active_tokens_per_joule": 0.1271, "gpu_mem_peak_mb": 610.4375, "cost_per_request_usd": 0.0011, "input_tokens": 79.3333, "output_tokens": 150.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.3333, "total_latency_s": 1.003, "active_device_energy_j": 243.7216, "active_tokens_per_joule": 0.5766, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0004, "input_tokens": 26.6667, "output_tokens": 140.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 2.0981, "active_device_energy_j": 333.5485, "active_tokens_per_joule": 0.5847, "gpu_mem_peak_mb": 13317.9583, "cost_per_request_usd": 0.0009, "input_tokens": 52.3333, "output_tokens": 180.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 1.221, "active_device_energy_j": 116.612, "active_tokens_per_joule": 1.0066, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0005, "input_tokens": 143.0, "output_tokens": 24.0}, {"model_label": "CodeLlama 7B Q4", "family": "CodeLlama", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.3333, "total_latency_s": 1.0667, "active_device_energy_j": 268.445, "active_tokens_per_joule": 0.5593, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0005, "input_tokens": 79.3333, "output_tokens": 150.0}, {"model_label": "CodeLlama 7B Q8", "family": "CodeLlama", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.6667, "total_latency_s": 1.5869, "active_device_energy_j": 363.661, "active_tokens_per_joule": 0.385, "gpu_mem_peak_mb": 16190.625, "cost_per_request_usd": 0.0007, "input_tokens": 26.6667, "output_tokens": 140.0}, {"model_label": "CodeLlama 7B Q8", "family": "CodeLlama", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.0, "total_latency_s": 4.3044, "active_device_energy_j": 602.9714, "active_tokens_per_joule": 0.3214, "gpu_mem_peak_mb": 20273.9583, "cost_per_request_usd": 0.0018, "input_tokens": 52.3333, "output_tokens": 180.0}, {"model_label": "CodeLlama 7B Q8", "family": "CodeLlama", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.3052, "active_device_energy_j": 62.0463, "active_tokens_per_joule": 0.4137, "gpu_mem_peak_mb": 16191.9583, "cost_per_request_usd": 0.0001, "input_tokens": 143.0, "output_tokens": 24.0}, {"model_label": "CodeLlama 7B Q8", "family": "CodeLlama", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.0833, "total_latency_s": 1.6927, "active_device_energy_j": 374.7933, "active_tokens_per_joule": 0.4002, "gpu_mem_peak_mb": 16190.625, "cost_per_request_usd": 0.0007, "input_tokens": 79.3333, "output_tokens": 150.0}, {"model_label": "DeepSeek Coder 6.7B Q4", "family": "DeepSeek Coder", "params_b": 6.7, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.7778, "total_latency_s": 1.0191, "active_device_energy_j": 269.9001, "active_tokens_per_joule": 0.519, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0004, "input_tokens": 94.6667, "output_tokens": 140.0}, {"model_label": "DeepSeek Coder 6.7B Q4", "family": "DeepSeek Coder", "params_b": 6.7, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 2.4875, "active_device_energy_j": 392.2678, "active_tokens_per_joule": 0.4626, "gpu_mem_peak_mb": 13316.625, "cost_per_request_usd": 0.0011, "input_tokens": 123.3333, "output_tokens": 171.0}, {"model_label": "DeepSeek Coder 6.7B Q4", "family": "DeepSeek Coder", "params_b": 6.7, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.2149, "active_device_energy_j": 51.3351, "active_tokens_per_joule": 0.4685, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0001, "input_tokens": 205.3333, "output_tokens": 24.0}, {"model_label": "DeepSeek Coder 6.7B Q4", "family": "DeepSeek Coder", "params_b": 6.7, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.8333, "total_latency_s": 1.0965, "active_device_energy_j": 259.1514, "active_tokens_per_joule": 0.5789, "gpu_mem_peak_mb": 13318.625, "cost_per_request_usd": 0.0005, "input_tokens": 146.3333, "output_tokens": 150.0}, {"model_label": "Gemma 2B Q4", "family": "Gemma", "params_b": 2.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.6667, "total_latency_s": 0.5976, "active_device_energy_j": 94.9992, "active_tokens_per_joule": 1.3487, "gpu_mem_peak_mb": 3574.625, "cost_per_request_usd": 0.0003, "input_tokens": 46.0, "output_tokens": 128.0}, {"model_label": "Gemma 2B Q4", "family": "Gemma", "params_b": 2.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 22.1249, "active_device_energy_j": 1072.8508, "active_tokens_per_joule": 1.3214, "gpu_mem_peak_mb": 3573.9583, "cost_per_request_usd": 0.0093, "input_tokens": 69.3333, "output_tokens": 144.6667}, {"model_label": "Gemma 2B Q4", "family": "Gemma", "params_b": 2.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 0.6667, "total_latency_s": 0.2153, "active_device_energy_j": 21.3486, "active_tokens_per_joule": 0.3897, "gpu_mem_peak_mb": 3575.2917, "cost_per_request_usd": 0.0001, "input_tokens": 143.6667, "output_tokens": 9.6667}, {"model_label": "Gemma 2B Q4", "family": "Gemma", "params_b": 2.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 0.407, "active_device_energy_j": 54.5243, "active_tokens_per_joule": 1.3531, "gpu_mem_peak_mb": 3574.625, "cost_per_request_usd": 0.0002, "input_tokens": 89.3333, "output_tokens": 72.3333}, {"model_label": "Gemma 7B FP16", "family": "Gemma", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 3.3048, "active_device_energy_j": 770.048, "active_tokens_per_joule": 0.1682, "gpu_mem_peak_mb": 21738.625, "cost_per_request_usd": 0.0014, "input_tokens": 46.0, "output_tokens": 129.3333}, {"model_label": "Gemma 7B FP16", "family": "Gemma", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.0, "total_latency_s": 13.0835, "active_device_energy_j": 1508.4915, "active_tokens_per_joule": 0.1348, "gpu_mem_peak_mb": 21738.625, "cost_per_request_usd": 0.0056, "input_tokens": 69.3333, "output_tokens": 162.0}, {"model_label": "Gemma 7B FP16", "family": "Gemma", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 0.6667, "total_latency_s": 0.6986, "active_device_energy_j": 132.9052, "active_tokens_per_joule": 0.1641, "gpu_mem_peak_mb": 21738.625, "cost_per_request_usd": 0.0003, "input_tokens": 143.6667, "output_tokens": 21.6667}, {"model_label": "Gemma 7B FP16", "family": "Gemma", "params_b": 7.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 2.1861, "active_device_energy_j": 503.3006, "active_tokens_per_joule": 0.1657, "gpu_mem_peak_mb": 21738.625, "cost_per_request_usd": 0.0009, "input_tokens": 89.3333, "output_tokens": 83.3333}, {"model_label": "Gemma 7B Q4", "family": "Gemma", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 3.6095, "active_device_energy_j": 407.7283, "active_tokens_per_joule": 0.3561, "gpu_mem_peak_mb": 10602.625, "cost_per_request_usd": 0.0015, "input_tokens": 46.0, "output_tokens": 122.6667}, {"model_label": "Gemma 7B Q4", "family": "Gemma", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 8.2802, "active_device_energy_j": 646.6178, "active_tokens_per_joule": 0.3444, "gpu_mem_peak_mb": 10601.9583, "cost_per_request_usd": 0.0035, "input_tokens": 69.3333, "output_tokens": 177.0}, {"model_label": "Gemma 7B Q4", "family": "Gemma", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 0.6667, "total_latency_s": 0.4175, "active_device_energy_j": 73.9563, "active_tokens_per_joule": 0.3277, "gpu_mem_peak_mb": 10603.9583, "cost_per_request_usd": 0.0002, "input_tokens": 143.6667, "output_tokens": 24.0}, {"model_label": "Gemma 7B Q4", "family": "Gemma", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 0.9237, "active_device_energy_j": 195.9698, "active_tokens_per_joule": 0.4256, "gpu_mem_peak_mb": 10602.625, "cost_per_request_usd": 0.0004, "input_tokens": 89.3333, "output_tokens": 82.6667}, {"model_label": "Gemma 7B Q8", "family": "Gemma", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 1.9696, "active_device_energy_j": 462.755, "active_tokens_per_joule": 0.2778, "gpu_mem_peak_mb": 13992.625, "cost_per_request_usd": 0.0008, "input_tokens": 46.0, "output_tokens": 128.3333}, {"model_label": "Gemma 7B Q8", "family": "Gemma", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.0, "total_latency_s": 5.641, "active_device_energy_j": 763.2826, "active_tokens_per_joule": 0.2384, "gpu_mem_peak_mb": 13992.625, "cost_per_request_usd": 0.0024, "input_tokens": 69.3333, "output_tokens": 162.0}, {"model_label": "Gemma 7B Q8", "family": "Gemma", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 0.6667, "total_latency_s": 0.4683, "active_device_energy_j": 90.629, "active_tokens_per_joule": 0.2496, "gpu_mem_peak_mb": 13993.9583, "cost_per_request_usd": 0.0002, "input_tokens": 143.6667, "output_tokens": 21.6667}, {"model_label": "Gemma 7B Q8", "family": "Gemma", "params_b": 7.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 1.3219, "active_device_energy_j": 289.5757, "active_tokens_per_joule": 0.2803, "gpu_mem_peak_mb": 13992.625, "cost_per_request_usd": 0.0006, "input_tokens": 89.3333, "output_tokens": 81.3333}, {"model_label": "Granite Code 20B Q4", "family": "Granite", "params_b": 20.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 1.8692, "active_device_energy_j": 478.0167, "active_tokens_per_joule": 0.2177, "gpu_mem_peak_mb": 12335.9583, "cost_per_request_usd": 0.0008, "input_tokens": 33.0, "output_tokens": 102.6667}, {"model_label": "Granite Code 20B Q4", "family": "Granite", "params_b": 20.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 6.6435, "active_device_energy_j": 454.7071, "active_tokens_per_joule": 0.1846, "gpu_mem_peak_mb": 12334.625, "cost_per_request_usd": 0.0028, "input_tokens": 56.3333, "output_tokens": 30.3333}, {"model_label": "Granite Code 20B Q4", "family": "Granite", "params_b": 20.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.1363, "active_device_energy_j": 24.1249, "active_tokens_per_joule": 0.1662, "gpu_mem_peak_mb": 12336.625, "cost_per_request_usd": 0.0001, "input_tokens": 140.3333, "output_tokens": 4.0}, {"model_label": "Granite Code 20B Q4", "family": "Granite", "params_b": 20.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.8333, "total_latency_s": 1.649, "active_device_energy_j": 416.8125, "active_tokens_per_joule": 0.2146, "gpu_mem_peak_mb": 12334.625, "cost_per_request_usd": 0.0007, "input_tokens": 82.6667, "output_tokens": 89.6667}, {"model_label": "Granite Code 3B Q4", "family": "Granite", "params_b": 3.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 0.6109, "active_device_energy_j": 100.1433, "active_tokens_per_joule": 1.2645, "gpu_mem_peak_mb": 13418.625, "cost_per_request_usd": 0.0003, "input_tokens": 33.0, "output_tokens": 126.0}, {"model_label": "Granite Code 3B Q4", "family": "Granite", "params_b": 3.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 5.0972, "active_device_energy_j": 321.492, "active_tokens_per_joule": 1.5113, "gpu_mem_peak_mb": 13416.625, "cost_per_request_usd": 0.0022, "input_tokens": 56.3333, "output_tokens": 68.3333}, {"model_label": "Granite Code 3B Q4", "family": "Granite", "params_b": 3.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 0.6667, "total_latency_s": 0.1318, "active_device_energy_j": 89.4093, "active_tokens_per_joule": 0.8421, "gpu_mem_peak_mb": 13418.625, "cost_per_request_usd": 0.0001, "input_tokens": 140.3333, "output_tokens": 17.6667}, {"model_label": "Granite Code 3B Q4", "family": "Granite", "params_b": 3.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 0.468, "active_device_energy_j": 72.0364, "active_tokens_per_joule": 1.3096, "gpu_mem_peak_mb": 13416.625, "cost_per_request_usd": 0.0002, "input_tokens": 82.6667, "output_tokens": 95.6667}, {"model_label": "Granite Code 8B Q4", "family": "Granite", "params_b": 8.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 1.1568, "active_device_energy_j": 259.534, "active_tokens_per_joule": 0.5398, "gpu_mem_peak_mb": 10325.9583, "cost_per_request_usd": 0.0005, "input_tokens": 33.0, "output_tokens": 140.0}, {"model_label": "Granite Code 8B Q4", "family": "Granite", "params_b": 8.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 2.3294, "active_device_energy_j": 234.6652, "active_tokens_per_joule": 0.4628, "gpu_mem_peak_mb": 11355.9583, "cost_per_request_usd": 0.001, "input_tokens": 56.3333, "output_tokens": 84.6667}, {"model_label": "Granite Code 8B Q4", "family": "Granite", "params_b": 8.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.1093, "active_device_energy_j": 23.5219, "active_tokens_per_joule": 0.213, "gpu_mem_peak_mb": 10326.625, "cost_per_request_usd": 0.0, "input_tokens": 140.3333, "output_tokens": 5.0}, {"model_label": "Granite Code 8B Q4", "family": "Granite", "params_b": 8.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 1.0162, "active_device_energy_j": 220.2005, "active_tokens_per_joule": 0.5442, "gpu_mem_peak_mb": 10324.625, "cost_per_request_usd": 0.0004, "input_tokens": 82.6667, "output_tokens": 120.0}, {"model_label": "Mistral 7B Q4", "family": "Mistral", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 0.9029, "active_device_energy_j": 230.5359, "active_tokens_per_joule": 0.5295, "gpu_mem_peak_mb": 9534.625, "cost_per_request_usd": 0.0004, "input_tokens": 30.0, "output_tokens": 121.3333}, {"model_label": "Mistral 7B Q4", "family": "Mistral", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 2.6458, "active_device_energy_j": 413.5812, "active_tokens_per_joule": 0.446, "gpu_mem_peak_mb": 13721.2917, "cost_per_request_usd": 0.0011, "input_tokens": 56.6667, "output_tokens": 175.3333}, {"model_label": "Mistral 7B Q4", "family": "Mistral", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.1034, "active_device_energy_j": 212.6976, "active_tokens_per_joule": 0.249, "gpu_mem_peak_mb": 9534.625, "cost_per_request_usd": 0.0001, "input_tokens": 141.6667, "output_tokens": 9.0}, {"model_label": "Mistral 7B Q4", "family": "Mistral", "params_b": 7.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 1.0, "total_latency_s": 0.8203, "active_device_energy_j": 200.2157, "active_tokens_per_joule": 0.5528, "gpu_mem_peak_mb": 9534.625, "cost_per_request_usd": 0.0004, "input_tokens": 81.3333, "output_tokens": 109.3333}, {"model_label": "mxbai Embed Large", "family": "mixedbread", "params_b": 0.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "embedding_search", "score": 1.0, "total_latency_s": 0.3489, "active_device_energy_j": 78.6604, "active_tokens_per_joule": 1.2347, "gpu_mem_peak_mb": 1732.625, "cost_per_request_usd": 0.0002, "input_tokens": 90.3333, "output_tokens": 0.0}, {"model_label": "Nomic Embed Text", "family": "Nomic", "params_b": 0.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "embedding_search", "score": 1.0, "total_latency_s": 2.3017, "active_device_energy_j": 169.5901, "active_tokens_per_joule": 0.6555, "gpu_mem_peak_mb": 5491.9583, "cost_per_request_usd": 0.001, "input_tokens": 85.0, "output_tokens": 0.0}, {"model_label": "Phi-3 14B FP16", "family": "Phi3", "params_b": 14.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 5.3603, "active_device_energy_j": 1269.3573, "active_tokens_per_joule": 0.1103, "gpu_mem_peak_mb": 28440.625, "cost_per_request_usd": 0.0023, "input_tokens": 35.0, "output_tokens": 140.0}, {"model_label": "Phi-3 14B FP16", "family": "Phi3", "params_b": 14.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 12.9345, "active_device_energy_j": 1585.9764, "active_tokens_per_joule": 0.0892, "gpu_mem_peak_mb": 28440.625, "cost_per_request_usd": 0.0055, "input_tokens": 60.3333, "output_tokens": 112.6667}, {"model_label": "Phi-3 14B FP16", "family": "Phi3", "params_b": 14.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.231, "active_device_energy_j": 37.924, "active_tokens_per_joule": 0.1401, "gpu_mem_peak_mb": 28440.625, "cost_per_request_usd": 0.0001, "input_tokens": 151.0, "output_tokens": 5.0}, {"model_label": "Phi-3 14B FP16", "family": "Phi3", "params_b": 14.0, "quantization": "fp16", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.9167, "total_latency_s": 3.196, "active_device_energy_j": 754.5926, "active_tokens_per_joule": 0.1103, "gpu_mem_peak_mb": 28440.625, "cost_per_request_usd": 0.0014, "input_tokens": 87.3333, "output_tokens": 83.0}, {"model_label": "Phi-3 14B Q4", "family": "Phi3", "params_b": 14.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 1.8863, "active_device_energy_j": 509.1662, "active_tokens_per_joule": 0.275, "gpu_mem_peak_mb": 10208.625, "cost_per_request_usd": 0.0008, "input_tokens": 35.0, "output_tokens": 140.0}, {"model_label": "Phi-3 14B Q4", "family": "Phi3", "params_b": 14.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 6.4604, "active_device_energy_j": 588.5066, "active_tokens_per_joule": 0.2193, "gpu_mem_peak_mb": 10208.625, "cost_per_request_usd": 0.0027, "input_tokens": 60.3333, "output_tokens": 95.0}, {"model_label": "Phi-3 14B Q4", "family": "Phi3", "params_b": 14.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.1058, "active_device_energy_j": 210.3072, "active_tokens_per_joule": 0.0846, "gpu_mem_peak_mb": 10209.9583, "cost_per_request_usd": 0.0001, "input_tokens": 151.0, "output_tokens": 5.0}, {"model_label": "Phi-3 14B Q4", "family": "Phi3", "params_b": 14.0, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.8333, "total_latency_s": 1.0933, "active_device_energy_j": 304.9402, "active_tokens_per_joule": 0.2611, "gpu_mem_peak_mb": 10208.625, "cost_per_request_usd": 0.0005, "input_tokens": 87.3333, "output_tokens": 79.3333}, {"model_label": "Phi-3 14B Q8", "family": "Phi3", "params_b": 14.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 3.0743, "active_device_energy_j": 816.7075, "active_tokens_per_joule": 0.1714, "gpu_mem_peak_mb": 16106.625, "cost_per_request_usd": 0.0013, "input_tokens": 35.0, "output_tokens": 140.0}, {"model_label": "Phi-3 14B Q8", "family": "Phi3", "params_b": 14.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.3333, "total_latency_s": 7.411, "active_device_energy_j": 958.3346, "active_tokens_per_joule": 0.1451, "gpu_mem_peak_mb": 17983.9583, "cost_per_request_usd": 0.0032, "input_tokens": 60.3333, "output_tokens": 112.6667}, {"model_label": "Phi-3 14B Q8", "family": "Phi3", "params_b": 14.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.1499, "active_device_energy_j": 25.8152, "active_tokens_per_joule": 0.1946, "gpu_mem_peak_mb": 16106.625, "cost_per_request_usd": 0.0001, "input_tokens": 151.0, "output_tokens": 5.0}, {"model_label": "Phi-3 14B Q8", "family": "Phi3", "params_b": 14.0, "quantization": "q8", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.9167, "total_latency_s": 1.7628, "active_device_energy_j": 464.343, "active_tokens_per_joule": 0.1707, "gpu_mem_peak_mb": 16106.625, "cost_per_request_usd": 0.0008, "input_tokens": 87.3333, "output_tokens": 79.3333}, {"model_label": "Phi-3 3.8B Q4", "family": "Phi3", "params_b": 3.8, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "chat_completion", "score": 0.8889, "total_latency_s": 0.6674, "active_device_energy_j": 144.5906, "active_tokens_per_joule": 0.9686, "gpu_mem_peak_mb": 5005.9583, "cost_per_request_usd": 0.0003, "input_tokens": 35.0, "output_tokens": 140.0}, {"model_label": "Phi-3 3.8B Q4", "family": "Phi3", "params_b": 3.8, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "code_generation", "score": 0.6667, "total_latency_s": 8.0945, "active_device_energy_j": 472.0674, "active_tokens_per_joule": 1.0264, "gpu_mem_peak_mb": 6871.2917, "cost_per_request_usd": 0.0034, "input_tokens": 60.3333, "output_tokens": 97.3333}, {"model_label": "Phi-3 3.8B Q4", "family": "Phi3", "params_b": 3.8, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "semantic_search", "score": 1.0, "total_latency_s": 0.0545, "active_device_energy_j": 279.0597, "active_tokens_per_joule": 0.0179, "gpu_mem_peak_mb": 5006.625, "cost_per_request_usd": 0.0, "input_tokens": 151.0, "output_tokens": 5.0}, {"model_label": "Phi-3 3.8B Q4", "family": "Phi3", "params_b": 3.8, "quantization": "q4", "hardware_profile": "l40s_gpu", "workload": "summarization", "score": 0.8333, "total_latency_s": 0.6195, "active_device_energy_j": 140.9412, "active_tokens_per_joule": 0.9169, "gpu_mem_peak_mb": 5004.625, "cost_per_request_usd": 0.0003, "input_tokens": 87.3333, "output_tokens": 129.0}];
+    const buttons = Array.from(document.querySelectorAll('.nav-btn'));
+    const pages = Array.from(document.querySelectorAll('.page'));
+    function showPage(id) {
+      buttons.forEach(btn => btn.classList.toggle('active', btn.dataset.page === id));
+      pages.forEach(page => page.classList.toggle('active', page.id === `page-${id}`));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    buttons.forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
+
+    const table = document.getElementById('dataTable');
+    const search = document.getElementById('tableSearch');
+    const workloadFilter = document.getElementById('workloadFilter');
+    const columns = [
+      ['model_label', 'Model'], ['workload', 'Workload'], ['hardware_profile', 'Hardware'],
+      ['params_b', 'B'], ['quantization', 'Quant'], ['score', 'Score'], ['total_latency_s', 'Latency s'],
+      ['active_device_energy_j', 'Active J'], ['active_tokens_per_joule', 'Tok/J'],
+      ['gpu_mem_peak_mb', 'Peak VRAM MB'], ['cost_per_request_usd', 'Cost/request']
+    ];
+    function unique(values) { return Array.from(new Set(values.filter(Boolean))).sort(); }
+    unique(rows.map(row => row.workload)).forEach(workload => {
+      const option = document.createElement('option');
+      option.value = workload;
+      option.textContent = workload.replaceAll('_', ' ');
+      workloadFilter.appendChild(option);
+    });
+    function formatCell(value, key) {
+      if (value === null || value === undefined || Number.isNaN(value)) return 'n/a';
+      if (typeof value === 'number') {
+        if (key === 'cost_per_request_usd') return '$' + value.toFixed(6);
+        if (['score','total_latency_s','active_tokens_per_joule'].includes(key)) return value.toFixed(2);
+        if (['active_device_energy_j','gpu_mem_peak_mb'].includes(key)) return Math.round(value).toLocaleString();
+        return value.toString();
+      }
+      return String(value).replaceAll('_', ' ');
+    }
+    function renderTable() {
+      const term = search.value.trim().toLowerCase();
+      const workload = workloadFilter.value;
+      const filtered = rows.filter(row => {
+        const text = Object.values(row).join(' ').toLowerCase();
+        return (!term || text.includes(term)) && (!workload || row.workload === workload);
+      });
+      const head = '<thead><tr>' + columns.map(([, label]) => `<th>${label}</th>`).join('') + '</tr></thead>';
+      const body = '<tbody>' + filtered.map(row => '<tr>' + columns.map(([key]) => `<td>${formatCell(row[key], key)}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      table.innerHTML = head + body;
+    }
+    search.addEventListener('input', renderTable);
+    workloadFilter.addEventListener('change', renderTable);
+    renderTable();
+  </script>
+</body>
+</html>
