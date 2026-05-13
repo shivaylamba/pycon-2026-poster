@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Dict, Iterable, List
 
@@ -62,6 +63,7 @@ def make_visuals(results_dir: Path, out: Path) -> List[Path]:
         plot_learning1_scaling_tradeoffs(summary, out / "learning1_scaling_tradeoffs.png"),
         plot_learning2_quantization_tradeoffs(summary, out / "learning2_quantization_tradeoffs.png"),
         plot_learning3_workload_specialization(summary, out / "learning3_workload_specialization.png"),
+        plot_workload_active_energy(summary, out / "workload_active_device_energy.png"),
         plot_learning3_cpu_gpu_tradeoff(summary, out / "learning3_cpu_gpu_tradeoff.png"),
         plot_scaling(summary, out / "experiment_a_scaling_curves.png"),
         plot_frontier(summary, out / "energy_accuracy_frontier.png"),
@@ -159,7 +161,7 @@ def workload_label(value: str) -> str:
 
 
 def quant_color(value: str) -> str:
-    return {"q4": POSTER_COLORS["green"], "q8": POSTER_COLORS["orange"], "fp16": POSTER_COLORS["purple"]}.get(value, POSTER_COLORS["blue"])
+    return {"q4": POSTER_COLORS["green"], "q8": POSTER_COLORS["orange"], "fp16": POSTER_COLORS["navy"]}.get(value, POSTER_COLORS["blue"])
 
 
 def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
@@ -339,6 +341,84 @@ def plot_learning3_workload_specialization(summary: pd.DataFrame, path: Path) ->
     cbar.ax.tick_params(colors=POSTER_COLORS["body"], labelsize=7.5)
     fig.text(0.5, 0.02, "Read horizontally: the same model can look strong on one workload and weak on another.", ha="center", fontsize=9, color=POSTER_COLORS["body"], weight="bold")
     fig.tight_layout(rect=[0, 0.05, 1, 0.93])
+    fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_workload_active_energy(summary: pd.DataFrame, path: Path) -> Path:
+    """Poster-facing view: active-device joules for common LLM workloads."""
+    if summary.empty or "active_device_energy_j" not in summary:
+        return blank(path, "Active Device Energy by Workload")
+
+    workloads = [
+        ("chat_completion", "Chat completion"),
+        ("summarization", "Document summary"),
+        ("embedding_search", "Batch embeddings"),
+    ]
+    available = [(workload, title) for workload, title in workloads if workload in set(summary["workload"])]
+    if not available:
+        return blank(path, "Active Device Energy by Workload", "Run chat, summarization, and embedding workloads to populate this panel.")
+
+    fig, axes = plt.subplots(1, len(available), figsize=(12.2, 4.65), squeeze=False)
+    axes = axes.flat
+    colors = {"cpu": "#79b8b3", primary_gpu_profile(summary): "#f28e2b"}
+    fallback_gpu = "#f28e2b"
+
+    for ax, (workload, title) in zip(axes, available):
+        light_ax(ax)
+        data = summary[summary["workload"].eq(workload)].copy()
+        if data.empty:
+            ax.set_axis_off()
+            continue
+
+        gpu = primary_gpu_profile(summary)
+        if workload == "embedding_search":
+            # Embedding models are the meaningful comparison here; keep both measured rows if present.
+            selected = data.sort_values("active_device_energy_j").head(6)
+        else:
+            gpu_rows = data[data["hardware_profile"].eq(gpu)].sort_values("active_device_energy_j").head(5)
+            cpu_rows = data[data["hardware_profile"].eq("cpu")].sort_values("active_device_energy_j").head(1)
+            selected = pd.concat([gpu_rows, cpu_rows], ignore_index=True).drop_duplicates(["model_id", "hardware_profile"])
+            selected = selected.sort_values("active_device_energy_j", ascending=True).tail(6)
+
+        if selected.empty:
+            ax.set_axis_off()
+            continue
+
+        selected = selected.sort_values("active_device_energy_j", ascending=True)
+        labels = [
+            f"{row.model_label.replace('CodeLlama', 'CL').replace('Granite Code', 'Granite')}\n{row.hardware_profile.replace('l40s_gpu', 'GPU').replace('cpu', 'CPU')}"
+            for row in selected.itertuples()
+        ]
+        bar_colors = [colors.get(hw, fallback_gpu) for hw in selected["hardware_profile"]]
+        bars = ax.barh(labels, selected["active_device_energy_j"], color=bar_colors, alpha=0.95)
+        ax.set_title(title, fontsize=11, weight="bold")
+        ax.set_xlabel("active-device energy (J)")
+        ax.tick_params(axis="y", labelsize=7.2)
+        xmax = max(float(selected["active_device_energy_j"].max()), 1.0)
+        ax.set_xlim(0, xmax * 1.22)
+        for bar, value in zip(bars, selected["active_device_energy_j"]):
+            ax.text(value + xmax * 0.025, bar.get_y() + bar.get_height() / 2, f"{value:.0f}J", va="center", ha="left", fontsize=7.5, color=POSTER_COLORS["ink"], weight="bold")
+        if workload == "embedding_search":
+            ax.text(0.98, 0.04, "tiny batches can favor CPU or small models", transform=ax.transAxes, ha="right", va="bottom", fontsize=7.2, color=POSTER_COLORS["muted"])
+
+    legend_handles = [
+        plt.Rectangle((0, 0), 1, 1, color="#79b8b3", label="CPU-side estimate"),
+        plt.Rectangle((0, 0), 1, 1, color="#f28e2b", label="GPU active NVML"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 0.925), ncol=2, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"], fontsize=8.5)
+    fig.suptitle("Measured active-device energy: same benchmark harness, different workloads", fontsize=14, weight="bold", color=POSTER_COLORS["ink"], y=1.0)
+    fig.text(
+        0.5,
+        0.02,
+        "Read within each panel: lower bars consume less active-device energy for that workload. This is an energy view, not a universal quality ranking.",
+        ha="center",
+        fontsize=9,
+        color=POSTER_COLORS["body"],
+        weight="bold",
+    )
+    fig.tight_layout(rect=[0, 0.07, 1, 0.86])
     fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
     plt.close(fig)
     return path
@@ -779,6 +859,56 @@ def write_memory_svg(path: Path) -> Path:
     return path
 
 
+def write_pycon_us_2026_logo(path: Path) -> Path:
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 348" role="img" aria-labelledby="title desc">
+<title id="title">PyCon US 2026 logo</title>
+<desc id="desc">A poster header SVG approximation of the supplied PyCon US 2026 Long Beach mark.</desc>
+<defs>
+  <linearGradient id="sun" x1="0" x2="0" y1="0" y2="1">
+    <stop offset="0" stop-color="#ffe071"/>
+    <stop offset="0.42" stop-color="#ff743e"/>
+    <stop offset="0.72" stop-color="#ff2f85"/>
+    <stop offset="1" stop-color="#a600ff"/>
+  </linearGradient>
+  <filter id="textGlow" x="-20%" y="-20%" width="140%" height="140%">
+    <feFlood flood-color="#ff00ff" flood-opacity="0.95"/>
+    <feComposite in2="SourceAlpha" operator="in"/>
+    <feGaussianBlur stdDeviation="1.4"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<rect width="420" height="348" fill="none"/>
+<g transform="translate(34 0)">
+  <circle cx="210" cy="95" r="92" fill="url(#sun)"/>
+  <g stroke="#17213b" stroke-width="4" opacity=".9">
+    <line x1="122" y1="103" x2="298" y2="103"/>
+    <line x1="118" y1="120" x2="302" y2="120"/>
+    <line x1="123" y1="137" x2="297" y2="137"/>
+    <line x1="133" y1="154" x2="287" y2="154"/>
+  </g>
+  <text x="244" y="32" fill="#5c0099" font-family="Comic Sans MS, Segoe Print, cursive" font-size="16" transform="rotate(32 244 32)">Long Beach</text>
+  <g fill="#4b007d" stroke="#4b007d" stroke-width="2">
+    <path d="M176 173 C186 118 199 77 205 43 C213 86 210 124 198 180 Z"/>
+    <path d="M234 169 C240 129 250 99 258 70 C262 108 258 143 249 177 Z"/>
+    <path d="M205 46 C186 31 166 29 148 40 C172 40 188 46 205 62 Z"/>
+    <path d="M205 49 C221 31 245 28 264 38 C238 40 222 48 205 66 Z"/>
+    <path d="M205 51 C198 30 205 14 223 2 C216 25 213 42 207 67 Z"/>
+    <path d="M258 72 C241 58 223 57 208 66 C228 67 243 73 257 86 Z"/>
+    <path d="M258 74 C274 57 292 55 308 65 C289 65 273 75 260 91 Z"/>
+    <path d="M258 75 C255 56 263 42 280 34 C271 53 266 67 260 92 Z"/>
+  </g>
+  <path d="M78 178 C120 178 125 226 169 225 C209 224 219 177 259 177 C298 177 307 226 346 225" fill="none" stroke="#ff43d2" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M78 166 C120 166 125 214 169 213 C209 212 219 165 259 165 C298 165 307 214 346 213" fill="none" stroke="#1ddff2" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="78" cy="166" r="3" fill="#17213b"/>
+  <circle cx="346" cy="213" r="3" fill="#17213b"/>
+</g>
+<text x="210" y="282" text-anchor="middle" fill="#ffffff" stroke="#ff00ff" stroke-width="7" paint-order="stroke" filter="url(#textGlow)" font-family="Inter, Arial Black, sans-serif" font-size="58" font-weight="900" letter-spacing="1">PYCON.US</text>
+<text x="210" y="330" text-anchor="middle" fill="#ffffff" stroke="#ff00ff" stroke-width="6" paint-order="stroke" filter="url(#textGlow)" font-family="Inter, Arial Black, sans-serif" font-size="48" font-weight="900">2026</text>
+</svg>'''
+    path.write_text(svg, encoding="utf-8")
+    return path
+
+
 def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     metrics_path = results_dir / "metrics.csv"
     summary_path = results_dir / "summary_enriched.csv"
@@ -797,6 +927,16 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
                 hardware_name = hardware["gpus"][0].get("name", hardware_name)
         except json.JSONDecodeError:
             pass
+    pycon_logo = write_pycon_us_2026_logo(assets / "pycon-us-2026-logo.svg")
+    qr_source = Path(__file__).resolve().parents[1] / "poster" / "system_assets" / "repo_qr.png"
+    qr_asset = assets / "repo_qr.png"
+    if qr_source.exists():
+        shutil.copyfile(qr_source, qr_asset)
+    qr_markup = (
+        '<img class="qr-img" src="repo_qr.png" alt="QR code for the open repository">'
+        if qr_asset.exists()
+        else '<div class="qr-slot">QR<br>repo</div>'
+    )
 
     def cpu_gpu_rows() -> str:
         if summary.empty:
@@ -823,7 +963,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Which LLM Should I Run? — PyCon Poster</title>
+  <title>Cost &amp; Energy of Everyday LLM Workloads: A Visual Field Guide for Python Developers</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -843,92 +983,93 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       .poster {{ width:84.1cm; height:59.4cm; margin:0; box-shadow:none; aspect-ratio:auto; }}
       .poster * {{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
     }}
-    .header {{ background:#1a2744; padding:12px 24px; display:flex; align-items:center; gap:16px; color:#fff; flex-shrink:0; }}
-    .logo-area {{ flex:0 0 auto; display:flex; align-items:center; gap:10px; min-width:210px; }}
+    .header {{ background:#1a2744; padding:6px 22px; display:flex; align-items:center; gap:16px; color:#fff; flex-shrink:0; }}
+    .logo-area {{ flex:0 0 auto; display:flex; align-items:center; gap:10px; min-width:198px; }}
+    .header-qr {{ flex:0 0 198px; display:flex; justify-content:flex-end; align-items:center; }}
     .py-box {{ width:52px; height:52px; border:1.5px solid rgba(255,255,255,.55); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; }}
+    .pycon-logo {{ width:78px; height:64px; object-fit:contain; display:block; }}
     .conf-label {{ font-size:13px; font-weight:700; line-height:1.25; }}
     .conf-label small {{ display:block; font-size:9px; font-weight:500; opacity:.8; text-transform:uppercase; letter-spacing:.08em; }}
     .center {{ flex:1; text-align:center; min-width:0; }}
     h1 {{ font-size:clamp(16px,1.7vw,24px); line-height:1.12; font-weight:800; letter-spacing:-.01em; }}
     .authors {{ font-size:10.5px; margin-top:4px; opacity:.95; font-weight:600; }}
     .affiliations {{ font-size:9px; margin-top:2px; opacity:.78; }}
-    .glance-row {{ display:grid; grid-template-columns:132px repeat(4,1fr); gap:8px; padding:6px 16px; border-bottom:1.5px solid var(--border); background:#fbfcff; flex-shrink:0; align-items:stretch; }}
+    .glance-row {{ display:grid; grid-template-columns:132px repeat(4,1fr); gap:8px; padding:5px 16px; border-bottom:1.5px solid var(--border); background:#fbfcff; flex-shrink:0; align-items:stretch; }}
     .glance-label {{ display:flex; align-items:center; color:var(--accent); font-size:12px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }}
-    .glance-card {{ border:1px solid var(--border); border-radius:5px; background:#ffffff; padding:6px 9px; min-height:52px; }}
-    .glance-card b {{ display:block; color:var(--heading); font-size:13px; line-height:1.05; margin-bottom:4px; }}
-    .glance-card span {{ display:block; color:var(--body); font-size:8.7px; line-height:1.24; }}
-    .body {{ display:grid; grid-template-columns:.92fr 1.12fr 1fr; flex:1; min-height:0; }}
-    .col {{ padding:10px 14px 11px; border-right:1.5px solid var(--border); overflow:hidden; }}
+    .glance-card {{ border:1px solid var(--border); border-radius:5px; background:#ffffff; padding:6px 10px; min-height:52px; }}
+    .glance-card b {{ display:block; color:var(--heading); font-size:13.6px; line-height:1.05; margin-bottom:3px; }}
+    .glance-card span {{ display:block; color:var(--body); font-size:9px; line-height:1.24; }}
+    .repo-note {{ background:#1a2744; color:#cfd8e6; border-top:1px solid #33415f; padding:4px 16px; font-size:7.8px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }}
+    .body {{ display:grid; grid-template-columns:.98fr 1.08fr .98fr; flex:1; min-height:0; }}
+    .col {{ padding:11px 15px 11px; border-right:1.5px solid var(--border); overflow:hidden; }}
     .col:last-child {{ border-right:none; }}
-    .section {{ margin-bottom:8px; }}
-    .section-title {{ font-size:12px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:3px; border-bottom:2px solid var(--accent); margin-bottom:6px; }}
+    .section {{ margin-bottom:9px; }}
+    .section-title {{ font-size:12.8px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:4px; border-bottom:2px solid var(--accent); margin-bottom:6px; }}
     .section-title.blue {{ color:var(--blue); border-bottom-color:var(--blue); }}
-    .badge {{ display:inline-flex; align-items:center; gap:4px; background:#eef4ff; border:1px solid #c7d7f2; color:#1b3a5c; border-radius:999px; padding:2px 7px; font-size:7.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:4px; }}
-    .learning-title {{ font-size:15px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }}
-    .tagline {{ font-size:10.2px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }}
-    p, li {{ font-size:9.4px; line-height:1.37; color:var(--body); }}
+    .badge {{ display:inline-flex; align-items:center; gap:4px; background:#eef4ff; border:1px solid #c7d7f2; color:#1b3a5c; border-radius:999px; padding:3px 8px; font-size:8.1px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:5px; }}
+    .learning-title {{ font-size:14.6px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }}
+    .tagline {{ font-size:10.6px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }}
+    p, li {{ font-size:9.8px; line-height:1.38; color:var(--body); }}
     strong {{ color:var(--ink); }}
     ul {{ padding-left:14px; margin:4px 0; }}
     li {{ margin-bottom:2px; }}
-    table {{ width:100%; border-collapse:collapse; font-size:7.9px; margin:4px 0; }}
-    th, td {{ border:1px solid var(--border); padding:2.2px 4px; text-align:center; }}
+    table {{ width:100%; border-collapse:collapse; font-size:8.25px; margin:5px 0; }}
+    th, td {{ border:1px solid var(--border); padding:2.6px 4.6px; text-align:center; }}
     th {{ background:var(--surface); color:var(--heading); font-weight:700; }}
     td:first-child {{ text-align:left; font-weight:700; }}
     .best {{ color:var(--green); font-weight:800; }}
-    .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; margin:6px 0; }}
-    .kpi {{ background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:6px; min-height:48px; }}
-    .kpi b {{ display:block; color:var(--accent); font-size:18px; line-height:1; margin-bottom:3px; }}
-    .kpi span {{ display:block; color:var(--muted); font-size:8px; line-height:1.2; }}
-    .figure {{ border:1.5px solid var(--border); border-radius:4px; margin:5px 0; overflow:hidden; }}
-    .fig-caption {{ background:var(--surface); padding:4px 9px; font-size:8.8px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }}
-    .fig-body {{ padding:5px; }}
+    .kpis {{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:7px 0; }}
+    .kpi {{ background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:7px; min-height:52px; }}
+    .kpi b {{ display:block; color:var(--accent); font-size:21px; line-height:1; margin-bottom:4px; }}
+    .kpi span {{ display:block; color:var(--muted); font-size:8.6px; line-height:1.22; }}
+    .figure {{ border:1.5px solid var(--border); border-radius:4px; margin:6px 0; overflow:hidden; }}
+    .fig-caption {{ background:var(--surface); padding:5px 10px; font-size:9.4px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }}
+    .fig-body {{ padding:6px; }}
     .chart {{ width:100%; display:block; object-fit:contain; }}
-    .chart-life {{ height:170px; }}
-    .chart-large {{ height:270px; }}
-    .chart-xl {{ height:242px; }}
-    .chart-mid {{ height:198px; }}
-    .chart-small {{ height:110px; }}
-    .callout {{ background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.4px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }}
+    .chart-life {{ height:152px; }}
+    .chart-large {{ height:276px; }}
+    .chart-xl {{ height:246px; }}
+    .chart-mid {{ height:205px; }}
+    .chart-small {{ height:128px; }}
+    .callout {{ background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.8px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }}
+    .trace-note {{ font-size:8.8px; line-height:1.25; padding:5px 8px; margin-top:5px; }}
     .caution {{ background:#fff7ed; border-left:3px solid var(--orange); }}
     .score-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }}
     .score-card {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:54px; }}
     .score-card b {{ display:block; color:var(--heading); font-size:8.8px; margin-bottom:2px; }}
     .score-card span {{ display:block; color:var(--body); font-size:7.8px; line-height:1.25; }}
-    .choice-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:5px 0; }}
-    .choice-box {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:5px 6px; min-height:58px; }}
-    .choice-box b {{ display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }}
+    .choice-grid {{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:7px 0; }}
+    .choice-box {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px 7px; min-height:64px; }}
+    .choice-box b {{ display:block; color:var(--heading); font-size:10px; margin-bottom:4px; }}
     .choice-box ul {{ margin:0; padding-left:13px; }}
-    .choice-box li {{ font-size:7.4px; line-height:1.15; margin-bottom:0; }}
+    .choice-box li {{ font-size:8.2px; line-height:1.2; margin-bottom:0; }}
     .decision {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px; }}
     .decision div {{ background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:58px; }}
     .decision b {{ display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }}
     .stack {{ display:flex; flex-direction:column; }}
-    .stack-row {{ display:flex; border:1px solid var(--border); border-bottom:none; font-size:9px; line-height:1.3; }}
+    .stack-row {{ display:flex; border:1px solid var(--border); border-bottom:none; font-size:9.6px; line-height:1.34; }}
     .stack-row:last-child {{ border-bottom:1px solid var(--border); }}
-    .stack-tag {{ flex:0 0 78px; display:flex; align-items:center; justify-content:center; text-align:center; padding:4px 5px; font-size:7px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }}
-    .stack-desc {{ flex:1; padding:4px 6px; }}
+    .stack-tag {{ flex:0 0 82px; display:flex; align-items:center; justify-content:center; text-align:center; padding:5px 6px; font-size:7.4px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }}
+    .stack-desc {{ flex:1; padding:5px 7px; }}
     .tag-fixtures {{ background:#dbeafe; color:#1e3a8a; }}
     .tag-client {{ background:#dcfce7; color:#14532d; }}
     .tag-energy {{ background:#fff7ed; color:#9a3412; }}
     .tag-visual {{ background:#f3e8ff; color:#581c87; }}
-    .note {{ font-size:8px; color:var(--muted); line-height:1.28; margin-top:3px; }}
-    .footer {{ border-top:1.5px solid var(--border); padding:6px 16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-shrink:0; }}
-    .refs {{ font-size:8.5px; line-height:1.35; color:var(--muted); flex:1; }}
-    .refs strong {{ color:var(--heading); }}
-    .qr-slot {{ flex:0 0 auto; width:60px; height:60px; background:var(--surface); border:1px solid var(--border); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:7px; font-weight:800; color:var(--muted); text-transform:uppercase; text-align:center; }}
-    .conf-bar {{ background:var(--heading); color:#8899aa; font-size:8.5px; padding:4px 16px; display:flex; justify-content:space-between; flex-shrink:0; }}
+    .note {{ font-size:8.7px; color:var(--muted); line-height:1.34; margin-top:4px; }}
+    .qr-slot {{ width:60px; height:60px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.48); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:7px; font-weight:800; color:rgba(255,255,255,.82); text-transform:uppercase; text-align:center; }}
+    .qr-img {{ width:60px; height:60px; object-fit:contain; display:block; background:#fff; padding:3px; border-radius:4px; border:1px solid rgba(255,255,255,.55); }}
   </style>
 </head>
 <body>
 <div class="poster" contenteditable="false">
   <div class="header">
-    <div class="logo-area"><div class="py-box">Py</div><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
+    <div class="logo-area"><img class="pycon-logo" src="{pycon_logo.name}" alt="PyCon US 2026 logo"><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
     <div class="center">
-      <h1>Which LLM Should I Run?<br>Cost, Energy &amp; Infrastructure Tradeoffs for Python Developers</h1>
+      <h1>Cost &amp; Energy of Everyday LLM Workloads: A Visual Field Guide for Python Developers</h1>
       <div class="authors">Shivay Lamba &nbsp;&nbsp; Suvrakamal Das</div>
-      <div class="affiliations">Python scripts + Ollama + Hugging Face models + NVML + pandas + matplotlib</div>
+      <div class="affiliations">shivaylamba@gmail.com &nbsp;&nbsp; subhrokomol@gmail.com</div>
     </div>
-    <div class="logo-area" style="visibility:hidden"><div class="py-box">Py</div><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
+    <div class="header-qr">{qr_markup}</div>
   </div>
 
   <div class="glance-row">
@@ -938,13 +1079,12 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     <div class="glance-card"><b>No Single Winner</b><span>The best model depends on workload: code, summary, chat, RAG, or embeddings.</span></div>
     <div class="glance-card"><b>Hardware Depends on Scale</b><span>CPU can be fine for tiny local jobs; GPU wins when batching or concurrency grows.</span></div>
   </div>
-
   <div class="body">
     <div class="col">
       <div class="section">
         <div class="section-title">Overview</div>
         <p>Everyday LLM calls look simple from Python, but the real deployment decision is a tradeoff between <strong>quality</strong>, <strong>latency</strong>, <strong>VRAM</strong>, <strong>energy</strong>, and <strong>cost</strong>.</p>
-        <p style="margin-top:4px;">We benchmark code generation, summarization, chat, RAG-style search, and embeddings across model sizes, quantization levels, architectures, and CPU/GPU configurations.</p>
+        <p style="margin-top:4px;">We benchmark chat completions, document summarization, classification-style prompts, RAG-style search, code generation, and batch embeddings across model sizes, quantization levels, architectures, and CPU/GPU configurations.</p>
         <div class="callout"><strong>Thesis:</strong> the most accurate LLM is often not the most economically efficient one. LLM deployment is a systems engineering problem, not just model selection.</div>
       </div>
 
@@ -961,19 +1101,19 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
           <tbody>
             <tr><td>Bigger model?</td><td>toy score, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
             <tr><td>Quantize?</td><td>q4/q8/fp16, tokens/J</td><td>fit smaller hardware</td></tr>
-            <tr><td>Which workload?</td><td>task score by model</td><td>avoid one-model thinking</td></tr>
+            <tr><td>Which workload?</td><td>latency slices, joules, cost, score</td><td>avoid one-model thinking</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="section">
         <div class="section-title blue">Measurement Pipeline</div>
-        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, and workload score.</p>
+        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, workload score, and request-cost estimates.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
           <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
           <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib turn traces into poster-ready figures.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib generate latency waterfalls, cost bars, and active-energy figures.</div></div>
         </div>
         <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
       </div>
@@ -997,17 +1137,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
           <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
           <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Measured energy trace"></div>
         </div>
-        <p class="note">This turns the abstract request trace into concrete joules, latency, GPU utilization, and VRAM for one measured LLM call.</p>
-      </div>
-
-      <div class="section">
-        <div class="section-title blue">What The Numbers Mean</div>
-        <div class="score-grid">
-          <div class="score-card"><b>Toy task score</b><span>Small reproducible task signal. Example: 0.67 means 2 of 3 deterministic checks passed.</span></div>
-          <div class="score-card"><b>Energy</b><span>Active-device joules: GPU NVML draw minus idle baseline, or labeled CPU estimate.</span></div>
-          <div class="score-card"><b>Tokens/J</b><span>Generated or processed tokens divided by active-device energy.</span></div>
-          <div class="score-card"><b>Interpretation</b><span>Use trends for deployment decisions; this is not a universal model leaderboard.</span></div>
-        </div>
+        <div class="callout trace-note"><strong>How to read it:</strong> one measured CodeLlama 7B Q4 chat request. The cards show active-device joules, latency, and peak VRAM; the trace locates Python client work, prefill, GPU inference, KV cache, sampling, and response parsing.</div>
       </div>
     </div>
 
@@ -1038,14 +1168,14 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
 
     <div class="col">
       <div class="section">
-        <div class="section-title">Learning 3: No Single Model Wins Every Workload</div>
-        <div class="badge">SIMILAR SIZE · DIFFERENT ARCHITECTURES / WORKLOADS</div>
-        <div class="tagline">The efficient model depends on whether you are doing code, summaries, chat, RAG, or embeddings.</div>
+        <div class="section-title">Learning 3: Energy Depends on the Workload</div>
+        <div class="badge">COMMON WORKLOADS · ACTIVE-DEVICE JOULES</div>
+        <div class="tagline">Chat, document summaries, RAG, and embeddings do not stress the same parts of the stack.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: workload-specialization matrix</span><span>SIMILAR-SIZE Q4 MODELS</span></div>
-          <div class="fig-body"><img class="chart chart-mid" src="learning3_workload_specialization.png" alt="Workload specialization"></div>
+          <div class="fig-caption"><span>Measured benchmark: active-device energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
+          <div class="fig-body"><img class="chart chart-mid" src="workload_active_device_energy.png" alt="Active device energy for chat, summarization, and embeddings"></div>
         </div>
-        <div class="callout">“Best model” is the wrong question. Ask: best model for which workload, on which hardware, under what latency and energy budget?</div>
+        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches, so the benchmark must be repeated per scenario.</div>
       </div>
 
       <div class="section">
@@ -1080,16 +1210,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       </div>
     </div>
   </div>
-
-  <div class="footer">
-    <div class="refs">
-      <strong>Artifacts:</strong> benchmark framework, configs, notebooks, CSV metrics, NVML traces, generated PNG/SVG assets, and printable poster.<br>
-      <strong>Open repository:</strong> github.com/shivaylamba/pycon-2026-poster
-      &nbsp;|&nbsp; <strong>Inspired by:</strong> Alizadeh et al., <em>Language Models in Software Development Tasks: An Experimental Analysis of Energy and Accuracy</em>, arXiv:2412.00329.
-    </div>
-    <div class="qr-slot">QR<br>repo</div>
-  </div>
-  <div class="conf-bar"><span>PyCon US Poster Session</span><span>Python scripts + pandas + matplotlib + Ollama + NVML</span></div>
+  <div class="repo-note">Open repository: github.com/shivaylamba/pycon-2026-poster | Inspired by: Alizadeh et al., Language Models in Software Development Tasks: An Experimental Analysis of Energy and Accuracy, arXiv:2412.00329.</div>
 </div>
 </body>
 </html>"""
