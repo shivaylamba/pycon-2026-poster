@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 348" role="img" aria-labelledby="title desc">
+<title id="title">PyCon US 2026 logo</title>
+<desc id="desc">A poster header SVG approximation of the supplied PyCon US 2026 Long Beach mark.</desc>
+<defs>
+  <linearGradient id="sun" x1="0" x2="0" y1="0" y2="1">
+    <stop offset="0" stop-color="#ffe071"/>
+    <stop offset="0.42" stop-color="#ff743e"/>
+    <stop offset="0.72" stop-color="#ff2f85"/>
+    <stop offset="1" stop-color="#a600ff"/>
+  </linearGradient>
+  <filter id="textGlow" x="-20%" y="-20%" width="140%" height="140%">
+    <feFlood flood-color="#ff00ff" flood-opacity="0.95"/>
+    <feComposite in2="SourceAlpha" operator="in"/>
+    <feGaussianBlur stdDeviation="1.4"/>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<rect width="420" height="348" fill="none"/>
+<g transform="translate(34 0)">
+  <circle cx="210" cy="95" r="92" fill="url(#sun)"/>
+  <g stroke="#17213b" stroke-width="4" opacity=".9">
+    <line x1="122" y1="103" x2="298" y2="103"/>
+    <line x1="118" y1="120" x2="302" y2="120"/>
+    <line x1="123" y1="137" x2="297" y2="137"/>
+    <line x1="133" y1="154" x2="287" y2="154"/>
+  </g>
+  <text x="244" y="32" fill="#5c0099" font-family="Comic Sans MS, Segoe Print, cursive" font-size="16" transform="rotate(32 244 32)">Long Beach</text>
+  <g fill="#4b007d" stroke="#4b007d" stroke-width="2">
+    <path d="M176 173 C186 118 199 77 205 43 C213 86 210 124 198 180 Z"/>
+    <path d="M234 169 C240 129 250 99 258 70 C262 108 258 143 249 177 Z"/>
+    <path d="M205 46 C186 31 166 29 148 40 C172 40 188 46 205 62 Z"/>
+    <path d="M205 49 C221 31 245 28 264 38 C238 40 222 48 205 66 Z"/>
+    <path d="M205 51 C198 30 205 14 223 2 C216 25 213 42 207 67 Z"/>
+    <path d="M258 72 C241 58 223 57 208 66 C228 67 243 73 257 86 Z"/>
+    <path d="M258 74 C274 57 292 55 308 65 C289 65 273 75 260 91 Z"/>
+    <path d="M258 75 C255 56 263 42 280 34 C271 53 266 67 260 92 Z"/>
+  </g>
+  <path d="M78 178 C120 178 125 226 169 225 C209 224 219 177 259 177 C298 177 307 226 346 225" fill="none" stroke="#ff43d2" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M78 166 C120 166 125 214 169 213 C209 212 219 165 259 165 C298 165 307 214 346 213" fill="none" stroke="#1ddff2" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="78" cy="166" r="3" fill="#17213b"/>
+  <circle cx="346" cy="213" r="3" fill="#17213b"/>
+</g>
+<text x="210" y="282" text-anchor="middle" fill="#ffffff" stroke="#ff00ff" stroke-width="7" paint-order="stroke" filter="url(#textGlow)" font-family="Inter, Arial Black, sans-serif" font-size="58" font-weight="900" letter-spacing="1">PYCON.US</text>
+<text x="210" y="330" text-anchor="middle" fill="#ffffff" stroke="#ff00ff" stroke-width="6" paint-order="stroke" filter="url(#textGlow)" font-family="Inter, Arial Black, sans-serif" font-size="48" font-weight="900">2026</text>
+</svg>
