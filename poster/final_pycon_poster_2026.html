@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cost &amp; Energy of Everyday LLM Workloads: A Visual Field Guide for Python Developers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink:#1a1a2e; --heading:#0f1b35; --body:#2c3e50; --muted:#6c7a89;
+      --accent:#1b3a5c; --border:#d1d5db; --bg:#ffffff; --surface:#f8f9fa;
+      --green:#1a7a3a; --orange:#d97706; --blue:#1b3a5c;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:#e5e7eb; font-family:"Inter",system-ui,sans-serif; color:var(--body); -webkit-font-smoothing:antialiased; }
+    code { font-family:"JetBrains Mono",monospace; font-size:.88em; background:#f0f0f0; padding:1px 4px; border-radius:2px; }
+    .poster { width:min(100vw - 16px,1580px); aspect-ratio:84.1/59.4; margin:8px auto; background:var(--bg); box-shadow:0 4px 20px rgba(0,0,0,.12); overflow:hidden; display:flex; flex-direction:column; }
+    @page { size:48in 36in; margin:0; }
+    @media print {
+      html, body { width:48in; height:36in; background:#fff; margin:0; padding:0; overflow:hidden; }
+      .poster {
+        width:1580px;
+        height:1115.96px;
+        max-width:none;
+        margin:1.04875in 0 0 0;
+        box-shadow:none;
+        aspect-ratio:auto;
+        transform:scale(2.916456);
+        transform-origin:top left;
+      }
+      .poster * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    }
+    .header { background:#1a2744; padding:6px 22px; display:flex; align-items:center; gap:16px; color:#fff; flex-shrink:0; }
+    .logo-area { flex:0 0 auto; display:flex; align-items:center; gap:10px; min-width:198px; }
+    .header-qr { flex:0 0 198px; display:flex; justify-content:flex-end; align-items:center; }
+    .py-box { width:52px; height:52px; border:1.5px solid rgba(255,255,255,.55); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; }
+    .pycon-logo { width:78px; height:64px; object-fit:contain; display:block; }
+    .conf-label { font-size:13px; font-weight:700; line-height:1.25; }
+    .conf-label small { display:block; font-size:9px; font-weight:500; opacity:.8; text-transform:uppercase; letter-spacing:.08em; }
+    .center { flex:1; text-align:center; min-width:0; }
+    h1 { font-size:clamp(16px,1.7vw,24px); line-height:1.12; font-weight:800; letter-spacing:-.01em; }
+    .authors { font-size:10.5px; margin-top:4px; opacity:.95; font-weight:600; }
+    .affiliations { font-size:9px; margin-top:2px; opacity:.78; }
+    .glance-row { display:grid; grid-template-columns:132px repeat(4,1fr); gap:8px; padding:5px 16px; border-bottom:1.5px solid var(--border); background:#fbfcff; flex-shrink:0; align-items:stretch; }
+    .glance-label { display:flex; align-items:center; color:var(--accent); font-size:12px; line-height:1.05; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+    .glance-card { border:1px solid var(--border); border-radius:5px; background:#ffffff; padding:6px 10px; min-height:52px; }
+    .glance-card b { display:block; color:var(--heading); font-size:13.6px; line-height:1.05; margin-bottom:3px; }
+    .glance-card span { display:block; color:var(--body); font-size:9px; line-height:1.24; }
+    .repo-note { background:#1a2744; color:#cfd8e6; border-top:1px solid #33415f; padding:4px 16px; font-size:7.8px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+    .body { display:grid; grid-template-columns:.98fr 1.08fr .98fr; flex:1; min-height:0; }
+    .col { padding:11px 15px 11px; border-right:1.5px solid var(--border); overflow:hidden; }
+    .col:last-child { border-right:none; }
+    .section { margin-bottom:9px; }
+    .section-title { font-size:12.8px; font-weight:800; text-transform:uppercase; color:var(--accent); letter-spacing:.04em; padding-bottom:4px; border-bottom:2px solid var(--accent); margin-bottom:6px; }
+    .section-title.blue { color:var(--blue); border-bottom-color:var(--blue); }
+    .badge { display:inline-flex; align-items:center; gap:4px; background:#eef4ff; border:1px solid #c7d7f2; color:#1b3a5c; border-radius:999px; padding:3px 8px; font-size:8.1px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; margin-bottom:5px; }
+    .learning-title { font-size:14.6px; font-weight:800; color:var(--heading); line-height:1.15; margin-bottom:4px; }
+    .tagline { font-size:10.6px; font-weight:800; color:var(--orange); line-height:1.25; margin-bottom:5px; }
+    p, li { font-size:9.8px; line-height:1.38; color:var(--body); }
+    strong { color:var(--ink); }
+    ul { padding-left:14px; margin:4px 0; }
+    li { margin-bottom:2px; }
+    table { width:100%; border-collapse:collapse; font-size:8.25px; margin:5px 0; }
+    th, td { border:1px solid var(--border); padding:2.6px 4.6px; text-align:center; }
+    th { background:var(--surface); color:var(--heading); font-weight:700; }
+    td:first-child { text-align:left; font-weight:700; }
+    .best { color:var(--green); font-weight:800; }
+    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:7px 0; }
+    .kpi { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:7px; min-height:52px; }
+    .kpi b { display:block; color:var(--accent); font-size:21px; line-height:1; margin-bottom:4px; }
+    .kpi span { display:block; color:var(--muted); font-size:8.6px; line-height:1.22; }
+    .figure { border:1.5px solid var(--border); border-radius:4px; margin:6px 0; overflow:hidden; }
+    .fig-caption { background:var(--surface); padding:5px 10px; font-size:9.4px; font-weight:800; color:var(--muted); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:8px; }
+    .fig-body { padding:6px; }
+    .chart { width:100%; display:block; object-fit:contain; }
+    .chart-life { height:152px; }
+    .chart-large { height:276px; }
+    .chart-xl { height:246px; }
+    .chart-mid { height:205px; }
+    .chart-small { height:128px; }
+    .callout { background:#f0f4fa; border-left:3px solid var(--accent); padding:5px 8px; font-size:9.8px; line-height:1.32; margin:5px 0; border-radius:0 3px 3px 0; }
+    .trace-note { font-size:8.8px; line-height:1.25; padding:5px 8px; margin-top:5px; }
+    .caution { background:#fff7ed; border-left:3px solid var(--orange); }
+    .score-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px; }
+    .score-card { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:54px; }
+    .score-card b { display:block; color:var(--heading); font-size:8.8px; margin-bottom:2px; }
+    .score-card span { display:block; color:var(--body); font-size:7.8px; line-height:1.25; }
+    .choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:7px 0; }
+    .choice-box { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px 7px; min-height:64px; }
+    .choice-box b { display:block; color:var(--heading); font-size:10px; margin-bottom:4px; }
+    .choice-box ul { margin:0; padding-left:13px; }
+    .choice-box li { font-size:8.2px; line-height:1.2; margin-bottom:0; }
+    .decision { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:6px; }
+    .decision div { background:#f8f9fa; border:1px solid var(--border); border-radius:4px; padding:6px; min-height:58px; }
+    .decision b { display:block; color:var(--heading); font-size:9px; margin-bottom:3px; }
+    .stack { display:flex; flex-direction:column; }
+    .stack-row { display:flex; border:1px solid var(--border); border-bottom:none; font-size:9.6px; line-height:1.34; }
+    .stack-row:last-child { border-bottom:1px solid var(--border); }
+    .stack-tag { flex:0 0 82px; display:flex; align-items:center; justify-content:center; text-align:center; padding:5px 6px; font-size:7.4px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .stack-desc { flex:1; padding:5px 7px; }
+    .tag-fixtures { background:#dbeafe; color:#1e3a8a; }
+    .tag-client { background:#dcfce7; color:#14532d; }
+    .tag-energy { background:#fff7ed; color:#9a3412; }
+    .tag-visual { background:#f3e8ff; color:#581c87; }
+    .note { font-size:8.7px; color:var(--muted); line-height:1.34; margin-top:4px; }
+    .qr-slot { width:60px; height:60px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.48); border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:7px; font-weight:800; color:rgba(255,255,255,.82); text-transform:uppercase; text-align:center; }
+    .qr-img { width:60px; height:60px; object-fit:contain; display:block; background:#fff; padding:3px; border-radius:4px; border:1px solid rgba(255,255,255,.55); }
+  </style>
+</head>
+<body>
+<div class="poster" contenteditable="false">
+  <div class="header">
+    <div class="logo-area"><img class="pycon-logo" src="final_pycon_poster_2026_assets/pycon-us-2026-logo.svg" alt="PyCon US 2026 logo"><div class="conf-label">PyCon US<br><small>Poster Session</small></div></div>
+    <div class="center">
+      <h1>Cost &amp; Energy of Everyday LLM Workloads: A Visual Field Guide for Python Developers</h1>
+      <div class="authors">Shivay Lamba &nbsp;&nbsp; Suvrakamal Das</div>
+      <div class="affiliations">shivaylamba@gmail.com &nbsp;&nbsp; subhrokomol@gmail.com</div>
+    </div>
+    <div class="header-qr"><img class="qr-img" src="final_pycon_poster_2026_assets/repo_qr.png" alt="QR code for the open repository"></div>
+  </div>
+
+  <div class="glance-row">
+    <div class="glance-label">Results<br>at a Glance</div>
+    <div class="glance-card"><b>Bigger ≠ Better</b><span>Scaling model size often raises energy, latency, and VRAM faster than toy-task quality.</span></div>
+    <div class="glance-card"><b>Quantization Changes Economics</b><span>q4/q8 variants can cut memory and energy enough to change where models can run.</span></div>
+    <div class="glance-card"><b>No Single Winner</b><span>The best model depends on workload: code, summary, chat, RAG, or embeddings.</span></div>
+    <div class="glance-card"><b>Hardware Depends on Scale</b><span>CPU can be fine for tiny local jobs; GPU wins when batching or concurrency grows.</span></div>
+  </div>
+  <div class="body">
+    <div class="col">
+      <div class="section">
+        <div class="section-title">Overview</div>
+        <p>Everyday LLM calls look simple from Python, but the real deployment decision is a tradeoff between <strong>quality</strong>, <strong>latency</strong>, <strong>VRAM</strong>, <strong>energy</strong>, and <strong>cost</strong>.</p>
+        <p style="margin-top:4px;">We benchmark chat completions, document summarization, classification-style prompts, RAG-style search, code generation, and batch embeddings across model sizes, quantization levels, architectures, and CPU/GPU configurations.</p>
+        <div class="callout"><strong>Thesis:</strong> the most accurate LLM is often not the most economically efficient one. LLM deployment is a systems engineering problem, not just model selection.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Benchmark Scope</div>
+        <div class="kpis">
+          <div class="kpi"><b>19</b><span>models / variants</span></div>
+          <div class="kpi"><b>5</b><span>workload families</span></div>
+          <div class="kpi"><b>234</b><span>metric rows</span></div>
+          <div class="kpi"><b>L40S</b><span>NVIDIA L40S</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Question</th><th>Measured Signals</th><th>Why It Matters</th></tr></thead>
+          <tbody>
+            <tr><td>Bigger model?</td><td>toy score, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
+            <tr><td>Quantize?</td><td>q4/q8/fp16, tokens/J</td><td>fit smaller hardware</td></tr>
+            <tr><td>Which workload?</td><td>latency slices, joules, cost, score</td><td>avoid one-model thinking</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">Measurement Pipeline</div>
+        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, workload score, and request-cost estimates.</p>
+        <div class="stack">
+          <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib generate latency waterfalls, cost bars, and active-energy figures.</div></div>
+        </div>
+        <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">What Gets Timed</div>
+        <table>
+          <thead><tr><th>Slice</th><th>Meaning</th><th>Why Python Devs Care</th></tr></thead>
+          <tbody>
+            <tr><td>Network</td><td>client call overhead</td><td>endpoint placement, batching</td></tr>
+            <tr><td>Tokenization</td><td>prompt processing / prefill</td><td>long docs are not free</td></tr>
+            <tr><td>Inference</td><td>model generation</td><td>model size dominates</td></tr>
+            <tr><td>Post-processing</td><td>parse, serialize, rank</td><td>pipeline glue is measurable</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Measured Energy Trace for One LLM</div>
+        <div class="figure">
+          <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
+          <div class="fig-body"><img class="chart chart-life" src="final_pycon_poster_2026_assets/request_lifecycle.svg" alt="Measured energy trace"></div>
+        </div>
+        <div class="callout trace-note"><strong>How to read it:</strong> one measured CodeLlama 7B Q4 chat request. The cards show active-device joules, latency, and peak VRAM; the trace locates Python client work, prefill, GPU inference, KV cache, sampling, and response parsing.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="section">
+        <div class="section-title">Learning 1: Bigger Models Have Diminishing Returns</div>
+        <div class="badge">SAME ARCHITECTURE · DIFFERENT SIZES</div>
+        <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
+        <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
+        <div class="figure">
+          <div class="fig-caption"><span>Measured benchmark: toy/code score, energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
+          <div class="fig-body"><img class="chart chart-large" src="final_pycon_poster_2026_assets/learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
+        </div>
+        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Learning 2: Quantization Changes the Economics of AI</div>
+        <div class="badge">SAME MODEL · DIFFERENT PRECISION</div>
+        <div class="tagline">4-bit and 8-bit models often retain useful quality while reducing memory, energy, and latency.</div>
+        <div class="figure">
+          <div class="fig-caption"><span>Measured benchmark: fp16 vs q8 vs q4 only within the same model</span><span>% OF SAME-MODEL FP16 BASELINE</span></div>
+          <div class="fig-body"><img class="chart chart-xl" src="final_pycon_poster_2026_assets/learning2_quantization_tradeoffs.png" alt="Quantization tradeoffs"></div>
+        </div>
+        <div class="callout"><strong>How to read it:</strong> FP16 is the 100% baseline for the exact same model; q8/q4 are compressed representations. Left: costs to minimize (VRAM, energy, latency). Right: benefits to preserve or improve (throughput, toy-score retention). Bars average only complete same-model FP16/q8/q4 triplets.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="section">
+        <div class="section-title">Learning 3: Energy Depends on the Workload</div>
+        <div class="badge">COMMON WORKLOADS · ACTIVE-DEVICE JOULES</div>
+        <div class="tagline">Chat, document summaries, RAG, and embeddings do not stress the same parts of the stack.</div>
+        <div class="figure">
+          <div class="fig-caption"><span>Measured benchmark: active-device energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
+          <div class="fig-body"><img class="chart chart-mid" src="final_pycon_poster_2026_assets/workload_active_device_energy.png" alt="Active device energy for chat, summarization, and embeddings"></div>
+        </div>
+        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches, so the benchmark must be repeated per scenario.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title blue">CPU vs GPU: The Scale Inflection Point</div>
+        <div class="badge">HARDWARE SCALE · CONCEPTUAL HEURISTIC</div>
+        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not the same as throughput.</p>
+        <div class="figure">
+          <div class="fig-caption"><span>Conceptual deployment heuristic, not measured concurrency data</span><span>CPU-ONLY VS GPU + BATCHING</span></div>
+          <div class="fig-body"><img class="chart chart-small" src="final_pycon_poster_2026_assets/learning3_cpu_gpu_tradeoff.png" alt="CPU GPU tradeoff"></div>
+        </div>
+        <div class="choice-grid">
+          <div class="choice-box"><b>CPU is reasonable for</b><ul><li>prototyping</li><li>local scripts</li><li>tiny embedding jobs</li><li>single-user offline tools</li><li>low request volume</li></ul></div>
+          <div class="choice-box"><b>GPU becomes better for</b><ul><li>long prompts / outputs</li><li>batch embeddings</li><li>multi-user chat</li><li>latency-sensitive services</li><li>high concurrency</li></ul></div>
+        </div>
+        <p class="note"><strong>Tiny embedding jobs may not amortize GPU overhead.</strong> Measure batch size before assuming the GPU path wins.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Practical Heuristics</div>
+        <table>
+          <thead><tr><th>#</th><th>Heuristic</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Benchmark the workload, not the model card.</td></tr>
+            <tr><td>2</td><td>If quality barely improves but joules rise, use the smaller model.</td></tr>
+            <tr><td>3</td><td>If VRAM is the deployment constraint, use q4/q8.</td></tr>
+            <tr><td>4</td><td>If the workload changes, re-benchmark; do not reuse one winner.</td></tr>
+            <tr><td>5</td><td>If concurrency grows, use GPU batching.</td></tr>
+            <tr><td>6</td><td>If the workload is tiny and local, CPU may be good enough.</td></tr>
+            <tr><td>7</td><td>Track tokens/joule, not just accuracy.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="repo-note">Open repository: github.com/shivaylamba/pycon-2026-poster | Inspired by: Alizadeh et al., Language Models in Software Development Tasks: An Experimental Analysis of Energy and Accuracy, arXiv:2412.00329.</div>
+</div>
+</body>
+</html>
