@@ -7,6 +7,20 @@ Notebook-first benchmark kit for the PyCon US poster:
 This is intentionally separate from the replication package in the parent
 directory. It reuses the research idea, not the paper's code.
 
+## Live Dashboard
+
+Explore the full companion UI here:
+
+**https://fieldguidel40scombined.vercel.app**
+
+The dashboard expands the poster into a multi-page systems field guide with
+latency waterfalls, active-device energy charts, quantization comparisons,
+CPU/GPU deployment views, request traces, downloadable CSVs, and a searchable
+benchmark table.
+
+The generated static HTML also lives in this repository at
+`remote_results/fieldguide_l40s_combined/fieldguide_assets/fieldguide_dashboard.html`.
+
 ## Systems Field Guide Track
 
 The newer poster track is:
