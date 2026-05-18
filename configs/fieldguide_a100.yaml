@@ -15,7 +15,7 @@ workloads:
   - chat_completion
 energy:
   gpu: pynvml
-  cpu: pyRAPL_if_available_else_tdp_estimate
+  cpu: RAPL_if_available_else_labeled_tdp_estimate_not_measured
   sample_interval_s: 0.1
 cost:
   electricity_usd_per_kwh: 0.18

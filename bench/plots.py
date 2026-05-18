@@ -41,6 +41,16 @@ def make_all_plots(metrics_path: str | Path, out_dir: str | Path) -> List[Path]:
 def add_energy_views(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     hardware = df.get("hardware_profile", pd.Series("", index=df.index)).astype(str).str.lower()
+    source = df.get("energy_source", df.get("source", pd.Series("", index=df.index))).fillna("").astype(str)
+    cpu_measured = source.str.contains("cpu:rapl", regex=False)
+    cpu_estimated = source.str.contains("cpu:tdp_estimate", regex=False)
+    gpu_measured = source.str.contains("gpu:nvml", regex=False)
+    df["cpu_energy_source"] = "unavailable"
+    df.loc[cpu_measured, "cpu_energy_source"] = "rapl"
+    df.loc[cpu_estimated, "cpu_energy_source"] = "tdp_estimate"
+    df["gpu_energy_source"] = gpu_measured.map({True: "nvml", False: "unavailable"})
+    df["cpu_energy_measured"] = cpu_measured
+    df["gpu_energy_measured"] = gpu_measured
     cpu_energy = df.get("cpu_energy_j", pd.Series(0.0, index=df.index)).fillna(0.0)
     gpu_energy = df.get("gpu_energy_j", pd.Series(0.0, index=df.index)).fillna(0.0)
     elapsed = df.get("elapsed_s", pd.Series(0.0, index=df.index)).fillna(0.0)
@@ -50,7 +60,13 @@ def add_energy_views(df: pd.DataFrame) -> pd.DataFrame:
     gpu_net_energy = (gpu_energy - gpu_idle_power_w * elapsed).clip(lower=0.0)
     df["gpu_idle_power_w_used"] = gpu_idle_power_w
     df["net_gpu_energy_j"] = gpu_net_energy
-    df["active_device_energy_j"] = cpu_energy.where(hardware.eq("cpu"), gpu_net_energy)
+    measured_active = gpu_net_energy.where(~hardware.eq("cpu") & gpu_measured)
+    measured_active = measured_active.where(~(hardware.eq("cpu") & cpu_measured), cpu_energy)
+    df["cpu_energy_estimate_j"] = cpu_energy.where(hardware.eq("cpu") & cpu_estimated)
+    df["cpu_energy_measured_j"] = cpu_energy.where(hardware.eq("cpu") & cpu_measured)
+    df["measured_active_device_energy_j"] = measured_active
+    df["estimated_active_device_energy_j"] = cpu_energy.where(hardware.eq("cpu") & cpu_estimated)
+    df["active_device_energy_j"] = measured_active
     tokens = df.get("total_tokens", pd.Series(0.0, index=df.index)).fillna(0.0)
     df["active_device_energy_j_per_1k_tokens"] = (
         df["active_device_energy_j"] / tokens.where(tokens > 0) * 1000.0
@@ -70,9 +86,13 @@ def summarize(df: pd.DataFrame) -> pd.DataFrame:
         "output_tokens",
         "total_tokens",
         "cpu_energy_j",
+        "cpu_energy_estimate_j",
+        "cpu_energy_measured_j",
         "gpu_energy_j",
         "gpu_idle_power_w_used",
         "net_gpu_energy_j",
+        "measured_active_device_energy_j",
+        "estimated_active_device_energy_j",
         "total_energy_j",
         "api_cost_usd",
         "energy_cost_usd",
@@ -143,10 +163,10 @@ def plot_energy_bars(df: pd.DataFrame, output_path: Path) -> Path:
     cpu = subset["cpu_energy_j"].fillna(0.0).tolist()
     gpu = subset["gpu_energy_j"].fillna(0.0).tolist()
     fig, ax = plt.subplots(figsize=(11, max(4, 0.45 * len(subset))))
-    ax.barh(labels, cpu, color="#72B7B2", label="CPU")
+    ax.barh(labels, cpu, color="#72B7B2", label="CPU (RAPL if available; TDP estimate otherwise)")
     ax.barh(labels, gpu, left=cpu, color="#F58518", label="GPU")
     ax.set_xlabel("Mean energy (joules)")
-    ax.set_title(f"CPU vs GPU Energy: {subset['workload'].iloc[0]}")
+    ax.set_title(f"Raw Energy Columns: {subset['workload'].iloc[0]}")
     ax.legend(loc="lower right")
     ax.grid(axis="x", alpha=0.25)
     fig.tight_layout()
@@ -156,13 +176,22 @@ def plot_energy_bars(df: pd.DataFrame, output_path: Path) -> Path:
 
 
 def plot_active_device_energy_bars(df: pd.DataFrame, output_path: Path) -> Path:
-    subset = df.sort_values("active_device_energy_j", ascending=True).tail(12)
+    subset = df[df["active_device_energy_j"].notna()].sort_values("active_device_energy_j", ascending=True).tail(12)
+    if subset.empty:
+        fig, ax = plt.subplots(figsize=(11, 4))
+        ax.text(0.5, 0.55, "No measured active-device energy rows", transform=ax.transAxes, ha="center")
+        ax.text(0.5, 0.43, "CPU TDP estimates are excluded; use RAPL or a wall meter for CPU joules.", transform=ax.transAxes, ha="center")
+        ax.set_axis_off()
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=180)
+        plt.close(fig)
+        return output_path
     labels = subset["series_label"].tolist()
     colors = subset["hardware_profile"].map({"cpu": "#72B7B2", "gpu": "#F58518"}).fillna("#4C78A8")
     fig, ax = plt.subplots(figsize=(11, max(4, 0.45 * len(subset))))
     ax.barh(labels, subset["active_device_energy_j"].fillna(0.0), color=colors)
-    ax.set_xlabel("Mean net active-device energy (joules)")
-    ax.set_title(f"Net Active Device Energy: {subset['workload'].iloc[0]}")
+    ax.set_xlabel("Mean measured active-device energy (joules)")
+    ax.set_title(f"Measured Active Device Energy: {subset['workload'].iloc[0]}")
     ax.grid(axis="x", alpha=0.25)
     fig.tight_layout()
     fig.savefig(output_path, dpi=180)

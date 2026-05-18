@@ -24,13 +24,27 @@ class EnergySummary:
     gpu_mem_avg_mb: Optional[float]
     gpu_count: int
     source: str
+    energy_sample_interval_s: float
+    energy_sample_frequency_hz: float
+    cpu_energy_source: str
+    gpu_energy_source: str
+    cpu_energy_measured: bool
+    gpu_energy_measured: bool
+    total_energy_includes_estimate: bool
 
     def as_dict(self) -> Dict[str, Any]:
         return self.__dict__.copy()
 
 
 class EnergyTrace:
-    """Samples CPU utilization, RAPL if available, and NVIDIA GPU power via NVML."""
+    """Samples utilization and device energy counters for a benchmark request.
+
+    GPU power is integrated from NVIDIA NVML samples. CPU package energy is only
+    measured when Linux RAPL counters are exposed by the host. In virtual
+    machines those counters are often unavailable; the optional TDP path is a
+    labeled utilization estimate and must not be presented as measured CPU
+    energy.
+    """
 
     def __init__(self, interval_s: float = 0.1, gpu_indices: Optional[List[int]] = None, cpu_tdp_watts: Optional[float] = None) -> None:
         self.interval_s = interval_s
@@ -138,13 +152,18 @@ class EnergyTrace:
         cpu_energy = self._cpu_energy(elapsed, cpu_avg)
         values = [value for value in (cpu_energy, gpu_energy) if value is not None]
         source_parts = []
+        cpu_source = "unavailable"
         if self._rapl_start is not None and self._rapl_end is not None:
             source_parts.append("cpu:rapl")
+            cpu_source = "rapl"
         elif self.cpu_tdp_watts:
             source_parts.append("cpu:tdp_estimate")
+            cpu_source = "tdp_estimate"
         else:
             source_parts.append("cpu:unavailable")
-        source_parts.append("gpu:nvml" if gpu_powers else "gpu:unavailable")
+        gpu_source = "nvml" if gpu_powers else "unavailable"
+        source_parts.append(f"gpu:{gpu_source}")
+        sample_frequency = 1.0 / self.interval_s if self.interval_s > 0 else 0.0
         return EnergySummary(
             elapsed_s=elapsed,
             cpu_energy_j=cpu_energy,
@@ -158,6 +177,13 @@ class EnergyTrace:
             gpu_mem_avg_mb=mean(gpu_mems),
             gpu_count=len(self._gpu_handles),
             source=";".join(source_parts),
+            energy_sample_interval_s=self.interval_s,
+            energy_sample_frequency_hz=sample_frequency,
+            cpu_energy_source=cpu_source,
+            gpu_energy_source=gpu_source,
+            cpu_energy_measured=cpu_source == "rapl",
+            gpu_energy_measured=gpu_source == "nvml",
+            total_energy_includes_estimate=cpu_source == "tdp_estimate",
         )
 
     def _cpu_energy(self, elapsed: float, cpu_avg_pct: Optional[float]) -> Optional[float]:

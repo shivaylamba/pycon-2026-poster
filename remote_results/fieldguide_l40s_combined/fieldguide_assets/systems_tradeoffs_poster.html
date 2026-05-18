@@ -139,23 +139,23 @@
         <table>
           <thead><tr><th>Question</th><th>Measured Signals</th><th>Why It Matters</th></tr></thead>
           <tbody>
-            <tr><td>Bigger model?</td><td>toy score, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
-            <tr><td>Quantize?</td><td>q4/q8/fp16, tokens/J</td><td>fit smaller hardware</td></tr>
-            <tr><td>Which workload?</td><td>latency slices, joules, cost, score</td><td>avoid one-model thinking</td></tr>
+            <tr><td>Bigger model?</td><td>toy score, latency, GPU joules, VRAM</td><td>find diminishing returns</td></tr>
+            <tr><td>Quantize?</td><td>q4/q8/fp16, GPU tokens/J</td><td>fit smaller hardware</td></tr>
+            <tr><td>Which workload?</td><td>latency slices, GPU joules, cost, score</td><td>avoid one-model thinking</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="section">
         <div class="section-title blue">Measurement Pipeline</div>
-        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, workload score, and request-cost estimates.</p>
+        <p>Each run produces one row of metrics: latency slices, token counts, GPU active energy, memory, workload score, and request-cost estimates.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
           <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM at 0.1s (~10Hz). CPU package joules require RAPL/bare metal; this VM only has a labeled TDP estimate.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib generate latency waterfalls, cost bars, and active-energy figures.</div></div>
         </div>
-        <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
+        <div class="callout caution"><strong>Energy attribution matters:</strong> measured GPU active energy is used for model-energy claims. CPU TDP/utilization estimates are retained in the CSV but excluded from measured-energy charts.</div>
       </div>
 
       <div class="section">
@@ -172,12 +172,12 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Measured Energy Trace for One LLM</div>
+        <div class="section-title">Measured GPU Energy Trace for One LLM</div>
         <div class="figure">
           <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
           <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Measured energy trace"></div>
         </div>
-        <div class="callout trace-note"><strong>How to read it:</strong> one measured CodeLlama 7B Q4 chat request. The cards show active-device joules, latency, and peak VRAM; the trace locates Python client work, prefill, GPU inference, KV cache, sampling, and response parsing.</div>
+        <div class="callout trace-note"><strong>How to read it:</strong> one CodeLlama 7B Q4 chat request on L40S. The cards show measured idle-adjusted GPU joules, raw GPU joules, latency, and peak VRAM. CPU package joules were unavailable in the VM and are not used as measured energy.</div>
       </div>
     </div>
 
@@ -188,10 +188,10 @@
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
         <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: toy/code score, energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
+          <div class="fig-caption"><span>Steady-state measured benchmark: toy/code score, GPU energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
-        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
+        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Cold model-load rows are excluded from this comparison so the plot reflects steady-state requests.</div>
       </div>
 
       <div class="section">
@@ -209,19 +209,19 @@
     <div class="col">
       <div class="section">
         <div class="section-title">Learning 3: Energy Depends on the Workload</div>
-        <div class="badge">COMMON WORKLOADS · ACTIVE-DEVICE JOULES</div>
+        <div class="badge">COMMON WORKLOADS · MEASURED GPU JOULES</div>
         <div class="tagline">Chat, document summaries, RAG, and embeddings do not stress the same parts of the stack.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: active-device energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
+          <div class="fig-caption"><span>Measured benchmark: GPU active energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
           <div class="fig-body"><img class="chart chart-mid" src="workload_active_device_energy.png" alt="Active device energy for chat, summarization, and embeddings"></div>
         </div>
-        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches, so the benchmark must be repeated per scenario.</div>
+        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. These are measured idle-adjusted GPU joules, not CPU energy. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches.</div>
       </div>
 
       <div class="section">
         <div class="section-title blue">CPU vs GPU: The Scale Inflection Point</div>
         <div class="badge">HARDWARE SCALE · CONCEPTUAL HEURISTIC</div>
-        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not the same as throughput.</p>
+        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not throughput, and CPU energy was not measured in this VM.</p>
         <div class="figure">
           <div class="fig-caption"><span>Conceptual deployment heuristic, not measured concurrency data</span><span>CPU-ONLY VS GPU + BATCHING</span></div>
           <div class="fig-body"><img class="chart chart-small" src="learning3_cpu_gpu_tradeoff.png" alt="CPU GPU tradeoff"></div>
@@ -244,7 +244,7 @@
             <tr><td>4</td><td>If the workload changes, re-benchmark; do not reuse one winner.</td></tr>
             <tr><td>5</td><td>If concurrency grows, use GPU batching.</td></tr>
             <tr><td>6</td><td>If the workload is tiny and local, CPU may be good enough.</td></tr>
-            <tr><td>7</td><td>Track tokens/joule, not just accuracy.</td></tr>
+            <tr><td>7</td><td>Track measured GPU tokens/joule; use bare-metal RAPL or a wall meter for CPU energy.</td></tr>
           </tbody>
         </table>
       </div>

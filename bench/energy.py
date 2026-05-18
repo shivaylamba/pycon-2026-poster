@@ -19,6 +19,13 @@ class EnergyResult:
     gpu_power_peak_w: Optional[float]
     gpu_count: int
     source: str
+    energy_sample_interval_s: float
+    energy_sample_frequency_hz: float
+    cpu_energy_source: str
+    gpu_energy_source: str
+    cpu_energy_measured: bool
+    gpu_energy_measured: bool
+    total_energy_includes_estimate: bool
 
     @property
     def total_energy_j(self) -> Optional[float]:
@@ -38,6 +45,13 @@ class EnergyResult:
             "gpu_power_peak_w": self.gpu_power_peak_w,
             "gpu_count": self.gpu_count,
             "energy_source": self.source,
+            "energy_sample_interval_s": self.energy_sample_interval_s,
+            "energy_sample_frequency_hz": self.energy_sample_frequency_hz,
+            "cpu_energy_source": self.cpu_energy_source,
+            "gpu_energy_source": self.gpu_energy_source,
+            "cpu_energy_measured": self.cpu_energy_measured,
+            "gpu_energy_measured": self.gpu_energy_measured,
+            "total_energy_includes_estimate": self.total_energy_includes_estimate,
         }
 
 
@@ -45,8 +59,9 @@ class EnergySampler:
     """Measures GPU energy with NVML and CPU energy with RAPL when available.
 
     If RAPL is unavailable, set ``cpu_tdp_watts`` in the hardware profile to
-    record a coarse utilization-based CPU energy estimate. The CSV columns make
-    that source explicit so poster figures can distinguish measured vs estimated.
+    record a coarse utilization-based CPU energy estimate. This fallback is not
+    measured CPU package energy, especially inside a VM. The CSV columns make
+    that source explicit so figures can distinguish measured vs estimated.
     """
 
     def __init__(
@@ -99,13 +114,18 @@ class EnergySampler:
         gpu_energy = self._gpu_energy()
         gpu_powers = [power for _, power in self._gpu_samples]
         source_parts = []
+        cpu_source = "unavailable"
         if self._rapl_start is not None and self._rapl_end is not None:
             source_parts.append("cpu:rapl")
+            cpu_source = "rapl"
         elif self.cpu_tdp_watts is not None:
             source_parts.append("cpu:tdp_estimate")
+            cpu_source = "tdp_estimate"
         else:
             source_parts.append("cpu:unavailable")
-        source_parts.append("gpu:nvml" if self._gpu_samples else "gpu:unavailable")
+        gpu_source = "nvml" if self._gpu_samples else "unavailable"
+        source_parts.append(f"gpu:{gpu_source}")
+        sample_frequency = 1.0 / self.interval_s if self.interval_s > 0 else 0.0
         return EnergyResult(
             elapsed_s=elapsed,
             cpu_energy_j=cpu_energy,
@@ -115,6 +135,13 @@ class EnergySampler:
             gpu_power_peak_w=max(gpu_powers) if gpu_powers else None,
             gpu_count=len(self._gpu_handles),
             source=";".join(source_parts),
+            energy_sample_interval_s=self.interval_s,
+            energy_sample_frequency_hz=sample_frequency,
+            cpu_energy_source=cpu_source,
+            gpu_energy_source=gpu_source,
+            cpu_energy_measured=cpu_source == "rapl",
+            gpu_energy_measured=gpu_source == "nvml",
+            total_energy_includes_estimate=cpu_source == "tdp_estimate",
         )
 
     def _setup_psutil(self) -> None:
@@ -237,4 +264,3 @@ def _mean(values: List[float]) -> Optional[float]:
     if not values:
         return None
     return float(sum(values) / len(values))
-

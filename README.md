@@ -14,9 +14,34 @@ Explore the full companion UI here:
 **https://fieldguidel40scombined.vercel.app**
 
 The dashboard expands the poster into a multi-page systems field guide with
-latency waterfalls, active-device energy charts, quantization comparisons,
+latency waterfalls, measured GPU-energy charts, quantization comparisons,
 CPU/GPU deployment views, request traces, downloadable CSVs, and a searchable
 benchmark table.
+
+## Energy Attribution Correction
+
+The completed Lightning.ai L40S export in this repository does **not** contain
+measured CPU package energy. The VM did not expose Linux RAPL counters, so CPU
+rows are marked `cpu:tdp_estimate`: a coarse `elapsed × configured TDP × CPU
+utilization` estimate. Those estimates remain in the CSV for transparency, but
+they are excluded from measured-energy poster/dashboard claims.
+
+What is measured in the current export:
+
+- GPU power, utilization, and VRAM via NVIDIA NVML.
+- Sampling interval: `0.1s`, approximately `10Hz`.
+- Idle-adjusted GPU energy: `net_gpu_energy_j = gpu_energy_j - idle_gpu_watts × elapsed_s`.
+
+What is not measured in the current export:
+
+- CPU package joules, because RAPL was unavailable inside the VM.
+- Full wall-plug system energy. Use a wall meter or cloud/provider power data
+  for that.
+
+If you rerun on bare metal with readable
+`/sys/class/powercap/intel-rapl:*` counters, the CSV will mark CPU energy as
+`cpu:rapl`. Until then, CPU-vs-GPU sections should be read as latency,
+throughput, and deployment guidance, not measured CPU-energy evidence.
 
 The generated static HTML also lives in this repository at
 `remote_results/fieldguide_l40s_combined/fieldguide_assets/fieldguide_dashboard.html`.
@@ -106,8 +131,10 @@ Each run writes a tidy `metrics.csv` with:
 - latency buckets: `network_s`, `tokenization_s`, `inference_s`, `postprocess_s`
 - token counts: `input_tokens`, `output_tokens`, `total_tokens`
 - cost estimates: `total_cost_usd`, `cost_per_1k_tokens_usd`
-- energy indicators: `cpu_energy_j`, `gpu_energy_j`, `net_gpu_energy_j`,
-  `active_device_energy_j`, `total_energy_j`
+- energy indicators: `gpu_energy_j`, `net_gpu_energy_j`,
+  `active_device_energy_j` for measured GPU rows, plus
+  `cpu_energy_source`, `cpu_energy_estimate_j`, and `cpu_energy_measured_j`
+  so CPU estimates are not confused with measured RAPL values
 - task fields such as classification correctness and retrieved RAG document ids
 
 For Ollama, `tokenization_s` is the backend's prompt-evaluation/prefill time.
@@ -172,17 +199,24 @@ The config defines two hardware profiles:
   through NVML when available.
 
 If Linux RAPL counters are readable, CPU package energy is measured directly.
-If not, set `cpu_tdp_watts` in the hardware profile to get a labeled estimate.
+If not, `cpu_tdp_watts` only creates a labeled estimate. Do not use that
+estimate as measured CPU energy, especially inside a VM.
 
 The poster plots follow the energy-accounting style used by the referenced
 LLM energy paper: sample device power over time, establish an idle baseline,
 and report net work energy above idle. In generated figures,
 `gpu_energy_j` remains the raw integrated NVML reading, while
-`net_gpu_energy_j = gpu_energy_j - idle_gpu_watts * elapsed_s`. On the
-Lightning A100 run, the idle GPU baseline is inferred from CPU-forced rows
-because the A100 stays attached while Ollama runs with `num_gpu: 0`; CPU rows
-use the explicit TDP/utilization estimate because RAPL counters were not
-available in that VM.
+`net_gpu_energy_j = gpu_energy_j - idle_gpu_watts * elapsed_s`. On Lightning
+VMs, the idle GPU baseline can be inferred from CPU-forced rows because the GPU
+stays attached while Ollama runs with `num_gpu: 0`. CPU rows in the bundled
+exports use the explicit TDP/utilization estimate because RAPL counters were
+not available; they are not plotted as measured energy in the corrected poster
+assets.
+
+Model-comparison summaries also exclude cold Ollama load rows (`load_s > 2s`)
+so first-request model loading does not distort steady-state latency or energy
+claims. The raw `metrics_enriched.csv` keeps those rows and flags them with
+`is_cold_load_row`.
 
 ## Notebooks
 
@@ -223,4 +257,6 @@ of the backend timing.
 - Long summarization calls are input-token dominated.
 - Batch embeddings amortize request overhead.
 - GPU watts alone are misleading: faster completion can reduce total joules.
+- CPU energy on VMs needs RAPL or wall-meter validation; TDP/utilization
+  estimates are only rough labels.
 - Cost per request and cost per thousand tokens answer different questions.

@@ -679,7 +679,7 @@ python scripts/make_plots.py \
           </div>
           <div class="metric">
             <div class="num">8.5×</div>
-            <div class="caption">Mistral classification used less net active-device energy on GPU.</div>
+            <div class="caption">Mistral classification used less measured net GPU energy on A100.</div>
           </div>
           <div class="metric">
             <div class="num">CPU</div>
@@ -687,7 +687,7 @@ python scripts/make_plots.py \
           </div>
         </div>
         <p class="note">
-          Active device energy follows the paper-style view: CPU estimate for CPU rows, and A100 NVML energy above idle for GPU rows.
+          Correction: CPU joules were not measured in the Lightning VM. Treat CPU rows as TDP estimates; measured energy claims should use A100 NVML energy above idle.
         </p>
       </div>
 
@@ -697,7 +697,7 @@ python scripts/make_plots.py \
       </div>
 
       <div class="figure tall">
-        <div class="fig-caption">Active Device Energy: Summarization <span>CPU estimate vs net A100 NVML</span></div>
+        <div class="fig-caption">Energy Indicators: Summarization <span>CPU estimate is not measured; A100 uses net NVML</span></div>
         <img src="assets/energy_active_device_summarization.png" alt="Active device energy for summarization workload" />
       </div>
 
@@ -706,7 +706,7 @@ python scripts/make_plots.py \
     <div class="col">
       <div class="section" style="margin-bottom:6px;">
         <div class="section-title">4. Cost + Energy Takeaways</div>
-        <p class="note">Read cost per request next to cost per 1,000 tokens, then compare active-device energy for CPU and A100 runs.</p>
+        <p class="note">Read cost per request next to cost per 1,000 tokens. Compare measured GPU energy separately from CPU estimates.</p>
       </div>
 
       <div class="figure medium">
@@ -723,25 +723,25 @@ python scripts/make_plots.py \
           <tbody>
             <tr>
               <td>Llama 3.2 3B chat</td>
-              <td>3.03s / 156J</td>
+              <td>3.03s / 156J est.</td>
               <td class="best">0.83s / 64J</td>
               <td>small models still benefit</td>
             </tr>
             <tr>
               <td>Mistral 24B summarize</td>
-              <td>18.63s / 1188J</td>
+              <td>18.63s / 1188J est.</td>
               <td class="best">1.90s / 465J</td>
               <td>GPU changes usability</td>
             </tr>
             <tr>
               <td>Mistral 24B classify</td>
-              <td>1.59s / 96J</td>
+              <td>1.59s / 96J est.</td>
               <td class="best">0.29s / 11J</td>
               <td>short outputs are cheap</td>
             </tr>
             <tr>
               <td>Nomic batch embed</td>
-              <td class="best">0.29s / 8J</td>
+              <td class="best">0.29s / 8J est.</td>
               <td>0.75s / 13J</td>
               <td>batch size matters</td>
             </tr>
@@ -750,7 +750,7 @@ python scripts/make_plots.py \
       </div>
 
       <div class="figure compact">
-        <div class="fig-caption">Active Device Energy: Batch Embeddings <span>small batch counterexample</span></div>
+        <div class="fig-caption">Energy Indicators: Batch Embeddings <span>small batch counterexample; CPU joules estimated</span></div>
         <img src="assets/energy_active_device_batch_embeddings.png" alt="Active device energy for batch embedding workload" />
       </div>
 
@@ -758,8 +758,8 @@ python scripts/make_plots.py \
         <div class="section-title">Energy Accounting</div>
         <div class="compact-list">
           <div><strong>GPU:</strong> NVML sampled at 10Hz; report net energy above idle: <code>J = (avg watts - idle watts) × seconds</code>.</div>
-          <div><strong>CPU:</strong> Lightning did not expose RAPL, so CPU rows use a labeled TDP × utilization estimate.</div>
-          <div><strong>Poster view:</strong> <code>active_device_energy_j</code> compares CPU estimate with net A100 GPU energy.</div>
+          <div><strong>CPU:</strong> Lightning did not expose RAPL, so CPU rows use a labeled TDP × utilization estimate, not measured CPU energy.</div>
+          <div><strong>Poster view:</strong> compare measured GPU NVML energy separately; do not treat CPU estimates as measured joules.</div>
         </div>
       </div>
 
@@ -772,7 +772,7 @@ python scripts/make_plots.py \
           </div>
           <div class="rule">
             <b>Large prompts and models favor GPUs.</b>
-            <p>The A100 made 24B summarization much faster and lower-energy in the active-device view.</p>
+            <p>The A100 made 24B summarization much faster; measured GPU energy is separate from CPU estimates.</p>
           </div>
           <div class="rule">
             <b>Small embedding batches can favor CPU.</b>

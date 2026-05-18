@@ -19,7 +19,7 @@ NEON = {
     "yellow": "#ca8a04",
     "orange": "#ea580c",
     "pink": "#be185d",
-    "purple": "#7e22ce",
+    "purple": "#1b3a5c",
     "blue": "#1d4ed8",
     "red": "#b91c1c",
     "bg": "#ffffff",
@@ -38,9 +38,34 @@ POSTER_COLORS = {
     "blue": "#2563eb",
     "green": "#16a34a",
     "orange": "#f97316",
-    "purple": "#7c3aed",
+    "purple": "#1b3a5c",
     "red": "#dc2626",
 }
+
+
+def add_energy_source_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add explicit measured-vs-estimated energy source columns.
+
+    Lightning VMs used for the poster did not expose RAPL CPU package counters,
+    so rows with ``cpu:tdp_estimate`` are retained for transparency but excluded
+    from measured-energy comparisons.
+    """
+    df = df.copy()
+    source = df.get("source", df.get("energy_source", pd.Series("", index=df.index))).fillna("").astype(str)
+    df["cpu_energy_source"] = np.select(
+        [source.str.contains("cpu:rapl", regex=False), source.str.contains("cpu:tdp_estimate", regex=False)],
+        ["rapl", "tdp_estimate"],
+        default="unavailable",
+    )
+    df["gpu_energy_source"] = np.where(source.str.contains("gpu:nvml", regex=False), "nvml", "unavailable")
+    df["cpu_energy_measured"] = df["cpu_energy_source"].eq("rapl")
+    df["gpu_energy_measured"] = df["gpu_energy_source"].eq("nvml")
+    if "energy_sample_interval_s" not in df.columns:
+        df["energy_sample_interval_s"] = 0.1
+    if "energy_sample_frequency_hz" not in df.columns:
+        interval = df["energy_sample_interval_s"].replace(0, np.nan)
+        df["energy_sample_frequency_hz"] = 1.0 / interval
+    return df
 
 
 def main() -> None:
@@ -58,7 +83,8 @@ def make_visuals(results_dir: Path, out: Path) -> List[Path]:
         metrics = metrics[metrics["status"].fillna("ok").eq("ok")].copy()
     metrics = add_energy_views(metrics)
     metrics.to_csv(results_dir / "metrics_enriched.csv", index=False)
-    summary = summarize(metrics)
+    summary_input = metrics[metrics["steady_state_row"]].copy() if "steady_state_row" in metrics and metrics["steady_state_row"].any() else metrics
+    summary = summarize(summary_input)
     summary.to_csv(results_dir / "summary_enriched.csv", index=False)
     paths = [
         plot_learning1_scaling_tradeoffs(summary, out / "learning1_scaling_tradeoffs.png"),
@@ -89,15 +115,30 @@ def make_visuals(results_dir: Path, out: Path) -> List[Path]:
 
 
 def add_energy_views(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
+    df = add_energy_source_columns(df)
+    load_s = df.get("load_s", pd.Series(0.0, index=df.index)).fillna(0.0)
+    df["is_cold_load_row"] = load_s > 2.0
+    df["steady_state_row"] = ~df["is_cold_load_row"]
     cpu_rows = df[df["hardware_profile"].eq("cpu")]
     idle_w = float(cpu_rows["gpu_power_avg_w"].dropna().median()) if not cpu_rows.empty else 0.0
     elapsed = df["elapsed_s"].fillna(df["total_latency_s"]).fillna(0.0)
     df["gpu_idle_power_w_used"] = idle_w
     df["net_gpu_energy_j"] = (df["gpu_energy_j"].fillna(0.0) - idle_w * elapsed).clip(lower=0.0)
-    df["active_device_energy_j"] = np.where(df["hardware_profile"].eq("cpu"), df["cpu_energy_j"].fillna(0.0), df["net_gpu_energy_j"])
+    cpu_estimated = df["cpu_energy_source"].eq("tdp_estimate")
+    cpu_measured = df["cpu_energy_source"].eq("rapl")
+    gpu_measured_rows = df["hardware_profile"].ne("cpu") & df["gpu_energy_measured"]
+    df["cpu_energy_estimate_j"] = np.where(cpu_estimated, df["cpu_energy_j"], np.nan)
+    df["cpu_energy_measured_j"] = np.where(cpu_measured, df["cpu_energy_j"], np.nan)
+    df["measured_active_device_energy_j"] = np.where(
+        gpu_measured_rows,
+        df["net_gpu_energy_j"],
+        np.where(df["hardware_profile"].eq("cpu") & cpu_measured, df["cpu_energy_j"], np.nan),
+    )
+    df["estimated_active_device_energy_j"] = np.where(df["hardware_profile"].eq("cpu") & cpu_estimated, df["cpu_energy_j"], np.nan)
+    df["active_device_energy_j"] = df["measured_active_device_energy_j"]
     token_basis = np.where(df["output_tokens"].fillna(0) > 0, df["output_tokens"].fillna(0), df["total_tokens"].fillna(0))
-    df["active_tokens_per_joule"] = np.where(df["active_device_energy_j"] > 0, token_basis / df["active_device_energy_j"], 0.0)
+    df["active_tokens_per_joule"] = np.where(df["active_device_energy_j"] > 0, token_basis / df["active_device_energy_j"], np.nan)
+    df["estimated_active_tokens_per_joule"] = np.where(df["estimated_active_device_energy_j"] > 0, token_basis / df["estimated_active_device_energy_j"], np.nan)
     return df
 
 
@@ -112,11 +153,19 @@ def primary_gpu_profile(df: pd.DataFrame) -> str:
 def summarize(df: pd.DataFrame) -> pd.DataFrame:
     group = ["model_id", "model_label", "family", "architecture", "params_b", "quantization", "precision_bits", "hardware_profile", "workload"]
     numeric = [
-        "score", "is_correct", "total_latency_s", "tokens_per_sec", "tokens_per_joule", "active_tokens_per_joule",
-        "active_device_energy_j", "net_gpu_energy_j", "total_energy_j", "gpu_power_avg_w", "gpu_mem_peak_mb",
+        "score", "is_correct", "load_s", "total_latency_s", "tokens_per_sec", "tokens_per_joule", "active_tokens_per_joule",
+        "estimated_active_tokens_per_joule", "active_device_energy_j", "measured_active_device_energy_j",
+        "estimated_active_device_energy_j", "cpu_energy_estimate_j", "cpu_energy_measured_j", "net_gpu_energy_j",
+        "total_energy_j", "gpu_power_avg_w", "gpu_mem_peak_mb", "energy_sample_interval_s", "energy_sample_frequency_hz",
         "cost_per_request_usd", "input_tokens", "output_tokens", "total_tokens",
     ]
-    return df.groupby(group, dropna=False)[[c for c in numeric if c in df.columns]].mean().reset_index()
+    result = df.groupby(group, dropna=False)[[c for c in numeric if c in df.columns]].mean().reset_index()
+    source_cols = ["cpu_energy_source", "gpu_energy_source", "cpu_energy_measured", "gpu_energy_measured"]
+    existing_sources = [c for c in source_cols if c in df.columns]
+    if existing_sources:
+        source_summary = df.groupby(group, dropna=False)[existing_sources].agg(lambda values: values.dropna().iloc[0] if len(values.dropna()) else np.nan).reset_index()
+        result = result.merge(source_summary, on=group, how="left")
+    return result
 
 
 def dark_ax(ax):
@@ -184,7 +233,7 @@ def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
     }
     panels = [
         ("score", "Toy/code score", "higher is better", None),
-        ("active_device_energy_j", "Energy/request (J)", "lower is better", None),
+        ("active_device_energy_j", "Measured GPU energy/request (J)", "lower is better", None),
         ("total_latency_s", "Latency/request (s)", "lower is better", None),
         ("gpu_mem_peak_mb", "Peak VRAM (GB)", "lower is better", 1024.0),
     ]
@@ -203,7 +252,7 @@ def plot_learning1_scaling_tradeoffs(summary: pd.DataFrame, path: Path) -> Path:
             ax.set_ylim(-0.03, 1.03)
     axes[0, 0].legend(loc="best", fontsize=7, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"])
     fig.suptitle("Learning 1: same-family Q4 scaling on the code-generation toy set", fontsize=14, weight="bold", color=POSTER_COLORS["ink"])
-    fig.text(0.5, 0.018, "Each panel uses the current primary-GPU, q4, code-generation filter. Quality is a toy pass rate; energy, latency, and VRAM are measured per request.", ha="center", fontsize=8.6, color=POSTER_COLORS["body"])
+    fig.text(0.5, 0.018, "Each panel uses warm primary-GPU q4 code-generation rows. Quality is a toy pass rate; energy is idle-adjusted GPU NVML, not CPU VM energy.", ha="center", fontsize=8.6, color=POSTER_COLORS["body"])
     fig.tight_layout(rect=[0, 0.06, 1, 0.92])
     fig.savefig(path, dpi=190, facecolor="#ffffff", bbox_inches="tight")
     plt.close(fig)
@@ -349,9 +398,9 @@ def plot_learning3_workload_specialization(summary: pd.DataFrame, path: Path) ->
 
 
 def plot_workload_active_energy(summary: pd.DataFrame, path: Path) -> Path:
-    """Poster-facing view: active-device joules for common LLM workloads."""
+    """Poster-facing view: measured GPU active joules for common workloads."""
     if summary.empty or "active_device_energy_j" not in summary:
-        return blank(path, "Active Device Energy by Workload")
+        return blank(path, "Measured GPU Energy by Workload")
 
     workloads = [
         ("chat_completion", "Chat completion"),
@@ -360,28 +409,32 @@ def plot_workload_active_energy(summary: pd.DataFrame, path: Path) -> Path:
     ]
     available = [(workload, title) for workload, title in workloads if workload in set(summary["workload"])]
     if not available:
-        return blank(path, "Active Device Energy by Workload", "Run chat, summarization, and embedding workloads to populate this panel.")
+        return blank(path, "Measured GPU Energy by Workload", "Run chat, summarization, and embedding workloads to populate this panel.")
 
     fig, axes = plt.subplots(1, len(available), figsize=(12.2, 4.65), squeeze=False)
     axes = axes.flat
-    colors = {"cpu": "#79b8b3", primary_gpu_profile(summary): "#f28e2b"}
     fallback_gpu = "#f28e2b"
 
     for ax, (workload, title) in zip(axes, available):
         light_ax(ax)
-        data = summary[summary["workload"].eq(workload)].copy()
+        data = summary[
+            summary["workload"].eq(workload)
+            & summary["hardware_profile"].ne("cpu")
+            & summary["active_device_energy_j"].notna()
+        ].copy()
         if data.empty:
-            ax.set_axis_off()
+            ax.text(0.5, 0.5, "No measured GPU energy rows", transform=ax.transAxes, ha="center", va="center", color=POSTER_COLORS["muted"], fontsize=9)
+            ax.set_xticks([])
+            ax.set_yticks([])
             continue
 
         gpu = primary_gpu_profile(summary)
         if workload == "embedding_search":
-            # Embedding models are the meaningful comparison here; keep both measured rows if present.
+            # Embedding models are the meaningful comparison here; CPU VM estimates are excluded.
             selected = data.sort_values("active_device_energy_j").head(6)
         else:
             gpu_rows = data[data["hardware_profile"].eq(gpu)].sort_values("active_device_energy_j").head(5)
-            cpu_rows = data[data["hardware_profile"].eq("cpu")].sort_values("active_device_energy_j").head(1)
-            selected = pd.concat([gpu_rows, cpu_rows], ignore_index=True).drop_duplicates(["model_id", "hardware_profile"])
+            selected = gpu_rows.drop_duplicates(["model_id", "hardware_profile"])
             selected = selected.sort_values("active_device_energy_j", ascending=True).tail(6)
 
         if selected.empty:
@@ -393,28 +446,27 @@ def plot_workload_active_energy(summary: pd.DataFrame, path: Path) -> Path:
             f"{row.model_label.replace('CodeLlama', 'CL').replace('Granite Code', 'Granite')}\n{row.hardware_profile.replace('l40s_gpu', 'GPU').replace('cpu', 'CPU')}"
             for row in selected.itertuples()
         ]
-        bar_colors = [colors.get(hw, fallback_gpu) for hw in selected["hardware_profile"]]
+        bar_colors = [fallback_gpu for _ in selected["hardware_profile"]]
         bars = ax.barh(labels, selected["active_device_energy_j"], color=bar_colors, alpha=0.95)
         ax.set_title(title, fontsize=11, weight="bold")
-        ax.set_xlabel("active-device energy (J)")
+        ax.set_xlabel("measured GPU active energy (J)")
         ax.tick_params(axis="y", labelsize=7.2)
         xmax = max(float(selected["active_device_energy_j"].max()), 1.0)
         ax.set_xlim(0, xmax * 1.22)
         for bar, value in zip(bars, selected["active_device_energy_j"]):
             ax.text(value + xmax * 0.025, bar.get_y() + bar.get_height() / 2, f"{value:.0f}J", va="center", ha="left", fontsize=7.5, color=POSTER_COLORS["ink"], weight="bold")
         if workload == "embedding_search":
-            ax.text(0.98, 0.04, "tiny batches can favor CPU or small models", transform=ax.transAxes, ha="right", va="bottom", fontsize=7.2, color=POSTER_COLORS["muted"])
+            ax.text(0.98, 0.04, "small batches may not amortize GPU overhead", transform=ax.transAxes, ha="right", va="bottom", fontsize=7.2, color=POSTER_COLORS["muted"])
 
     legend_handles = [
-        plt.Rectangle((0, 0), 1, 1, color="#79b8b3", label="CPU-side estimate"),
-        plt.Rectangle((0, 0), 1, 1, color="#f28e2b", label="GPU active NVML"),
+        plt.Rectangle((0, 0), 1, 1, color="#f28e2b", label="Measured GPU active NVML"),
     ]
-    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 0.925), ncol=2, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"], fontsize=8.5)
-    fig.suptitle("Measured active-device energy: same benchmark harness, different workloads", fontsize=14, weight="bold", color=POSTER_COLORS["ink"], y=1.0)
+    fig.legend(handles=legend_handles, loc="upper center", bbox_to_anchor=(0.5, 0.925), ncol=1, frameon=True, facecolor="#ffffff", edgecolor=POSTER_COLORS["border"], fontsize=8.5)
+    fig.suptitle("Measured GPU active energy: same benchmark harness, different workloads", fontsize=14, weight="bold", color=POSTER_COLORS["ink"], y=1.0)
     fig.text(
         0.5,
         0.02,
-        "Read within each panel: lower bars consume less active-device energy for that workload. This is an energy view, not a universal quality ranking.",
+        "Read within each panel: lower bars use less idle-adjusted GPU NVML energy. CPU VM energy was not measured and is excluded here.",
         ha="center",
         fontsize=9,
         color=POSTER_COLORS["body"],
@@ -500,7 +552,7 @@ def plot_quantization(summary: pd.DataFrame, path: Path) -> Path:
     for ax in axes:
         dark_ax(ax)
     labels = data["model_label"].str.replace("CodeLlama", "CL", regex=False)
-    colors = data["quantization"].map({"q4": NEON["green"], "q8": NEON["yellow"], "fp16": NEON["pink"]}).fillna(NEON["cyan"])
+    colors = data["quantization"].map({"q4": POSTER_COLORS["green"], "q8": POSTER_COLORS["orange"], "fp16": POSTER_COLORS["navy"]}).fillna(NEON["cyan"])
     axes[0].barh(labels, data["gpu_mem_peak_mb"] / 1024, color=colors)
     axes[0].set_title("VRAM footprint")
     axes[0].set_xlabel("Peak GB")
@@ -537,7 +589,7 @@ def plot_quant_waterfall(summary: pd.DataFrame, path: Path) -> Path:
     dark_ax(ax)
     y = np.arange(len(df))
     ax.barh(y, df["energy_drop"], color=NEON["green"], label="energy saved/request (J)")
-    ax.scatter(df["score_delta"] * max(df["energy_drop"].max(), 1), y, color=NEON["pink"], label="quality delta, scaled")
+    ax.scatter(df["score_delta"] * max(df["energy_drop"].max(), 1), y, color=POSTER_COLORS["navy"], label="quality delta, scaled")
     ax.set_yticks(y, df["label"])
     ax.set_xlabel("Q4 savings versus FP16")
     ax.set_title("Quantization Efficiency Waterfall")
@@ -629,11 +681,12 @@ def plot_concurrency(results_dir: Path, path: Path) -> Path:
     ax2 = ax1.twinx()
     for hw, sub in data.groupby("hardware_profile"):
         sub = sub.sort_values("concurrency")
-        ax2.plot(sub["concurrency"], sub["total_energy_j"], marker="x", linestyle="--", alpha=0.7, label=f"{hw} joules")
-    ax2.tick_params(colors=NEON["yellow"], labelsize=8)
-    ax2.yaxis.label.set_color(NEON["yellow"])
-    ax2.set_ylabel("Total joules")
-    ax1.set_title("Experiment D: Concurrency Scaling")
+        latency_per_request = sub["wall_s"] / sub["requests"].replace(0, np.nan)
+        ax2.plot(sub["concurrency"], latency_per_request, marker="x", linestyle="--", alpha=0.75, label=f"{hw} sec/request")
+    ax2.tick_params(colors=NEON["orange"], labelsize=8)
+    ax2.yaxis.label.set_color(NEON["orange"])
+    ax2.set_ylabel("Wall sec/request")
+    ax1.set_title("Experiment D: Concurrency Scaling (no CPU joule claim)")
     ax1.legend(frameon=False, fontsize=7, labelcolor=NEON["text"], loc="upper left")
     return save(fig, path)
 
@@ -665,10 +718,10 @@ def plot_latency_waterfall(metrics: pd.DataFrame, path: Path) -> Path:
 def plot_power_timeline(results_dir: Path, path: Path) -> Path:
     trace_path = results_dir / "traces" / "power_samples.jsonl"
     if not trace_path.exists():
-        return blank(path, "GPU + CPU Power Utilization Timeline", "Run with --save-traces to populate this panel.")
+        return blank(path, "GPU Power + CPU Utilization Timeline", "Run with --save-traces to populate this panel.")
     samples = pd.read_json(trace_path, lines=True)
     if samples.empty:
-        return blank(path, "GPU + CPU Power Utilization Timeline")
+        return blank(path, "GPU Power + CPU Utilization Timeline")
     run_id = samples.groupby("run_id")["gpu_power_w"].max().sort_values().index[-1]
     data = samples[samples["run_id"].eq(run_id)].copy()
     fig, ax1 = plt.subplots(figsize=(8.5, 3.6))
@@ -681,7 +734,7 @@ def plot_power_timeline(results_dir: Path, path: Path) -> Path:
     ax2.tick_params(colors=NEON["yellow"], labelsize=8)
     ax2.yaxis.label.set_color(NEON["yellow"])
     ax2.set_ylabel("CPU utilization %")
-    ax1.set_title("Experiment E: GPU + CPU Power Timeline")
+    ax1.set_title("Experiment E: GPU Power + CPU Utilization Timeline")
     return save(fig, path)
 
 
@@ -771,7 +824,6 @@ def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
     net_gpu_j = float(row.get("net_gpu_energy_j", row.get("active_device_energy_j", 0.0)))
     cpu_j = float(row.get("cpu_energy_j", 0.0))
     raw_gpu_j = float(row.get("gpu_energy_j", 0.0))
-    total_device_j = net_gpu_j + cpu_j
     latency = float(row.get("total_latency_s", 0.0))
     gpu_util = float(row.get("gpu_util_avg_pct", 0.0))
     cpu_util = float(row.get("cpu_util_avg_pct", 0.0))
@@ -779,13 +831,17 @@ def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
     tokens_j = float(row.get("active_tokens_per_joule", 0.0))
     output_tokens = float(row.get("output_tokens", 0.0))
     input_tokens = float(row.get("input_tokens", 0.0))
+    cpu_source = str(data["cpu_energy_source"].dropna().iloc[0]) if "cpu_energy_source" in data and not data["cpu_energy_source"].dropna().empty else "unavailable"
+    sample_hz = float(row.get("energy_sample_frequency_hz", 10.0))
+    cpu_card_value = f"{cpu_j:.0f} J" if cpu_source == "rapl" else "not measured"
+    cpu_card_sub = "RAPL counter" if cpu_source == "rapl" else "VM has no RAPL"
 
     stages = [
         ("Network", "NET", f"{float(row.get('network_s', 0.0)):.2f}s", "#2563eb", 74),
         ("Python", "CPU", f"{cpu_util:.0f}% CPU", "#1d4ed8", 78),
         ("Tokenize", "CPU", f"{float(row.get('tokenization_s', 0.0)):.2f}s", "#ca8a04", 82),
         ("CPU/RAM", "RAM", "prep + copy", "#0e7490", 82),
-        ("VRAM", "VRAM", f"{peak_vram_gb:.1f}GB", "#7c3aed", 78),
+        ("VRAM", "VRAM", f"{peak_vram_gb:.1f}GB", "#1b3a5c", 78),
         ("Inference", "GPU", f"{float(row.get('inference_s', 0.0)):.2f}s", "#16a34a", 92),
         ("KV cache", "VRAM", "context", "#ea580c", 78),
         ("Sampling", "GPU", f"{gpu_util:.0f}% GPU", "#be185d", 80),
@@ -794,14 +850,14 @@ def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
     ]
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360">']
     parts.append('<rect width="980" height="360" fill="#ffffff"/>')
-    parts.append(f'<text x="26" y="35" fill="#10213d" font-size="24" font-weight="800">Measured Energy Trace: {label} · Chat</text>')
-    parts.append(f'<text x="26" y="60" fill="#6c7a89" font-size="13.2">One measured L40S request profile. Energy is idle-adjusted GPU NVML plus a CPU-side estimate; raw GPU draw includes idle.</text>')
+    parts.append(f'<text x="26" y="35" fill="#10213d" font-size="24" font-weight="800">Measured GPU Energy Trace: {label} · Chat</text>')
+    parts.append(f'<text x="26" y="60" fill="#6c7a89" font-size="13.2">One L40S request profile. GPU power is sampled via NVML at ~{sample_hz:.0f}Hz and idle-adjusted; CPU package joules were not exposed in this VM.</text>')
     parts.append('<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1b3a5c"/></marker></defs>')
 
     kpis = [
-        ("Device-side energy", f"{total_device_j:.0f} J", "GPU active + CPU est.", "#f0f4fa"),
-        ("Active GPU energy", f"{net_gpu_j:.0f} J", "NVML minus idle", "#f0fdf4"),
-        ("CPU-side energy", f"{cpu_j:.0f} J", "RAPL/TDP estimate", "#fff7ed"),
+        ("Measured GPU active", f"{net_gpu_j:.0f} J", "NVML minus idle", "#f0fdf4"),
+        ("Raw GPU draw", f"{raw_gpu_j:.0f} J", "includes idle", "#f0f4fa"),
+        ("CPU package energy", cpu_card_value, cpu_card_sub, "#fff7ed"),
         ("Latency", f"{latency:.2f}s", f"{input_tokens:.0f} in / {output_tokens:.0f} out tok", "#eef4ff"),
         ("Peak VRAM", f"{peak_vram_gb:.1f} GB", f"{tokens_j:.2f} tokens/J", "#f5f3ff"),
     ]
@@ -829,8 +885,8 @@ def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
         x += width + 12
 
     callouts = [
-        (42, 274, "GPU dominates this call", f"{net_gpu_j:.0f}J active GPU vs {cpu_j:.0f}J CPU-side estimate.", "#f0fdf4", "#16a34a"),
-        (330, 274, "VRAM footprint is visible", f"{label} peaked at {peak_vram_gb:.1f}GB on this run.", "#f5f3ff", "#7c3aed"),
+        (42, 274, "GPU energy is measured", f"{net_gpu_j:.0f}J active GPU after idle subtraction.", "#f0fdf4", "#16a34a"),
+        (330, 274, "VRAM footprint is visible", f"{label} peaked at {peak_vram_gb:.1f}GB on this run.", "#f5f3ff", "#1b3a5c"),
         (622, 274, "Latency is mostly inference", f"{float(row.get('inference_s', 0.0)):.2f}s of {latency:.2f}s total latency.", "#eef4ff", "#2563eb"),
     ]
     for x1, y1, title, body, fill, stroke in callouts:
@@ -838,7 +894,8 @@ def write_lifecycle_svg(metrics: pd.DataFrame, path: Path) -> Path:
         parts.append(f'<text x="{x1+12}" y="{y1+19}" fill="#10213d" font-size="11.5" font-weight="800">{title}</text>')
         parts.append(f'<text x="{x1+12}" y="{y1+36}" fill="#2c3e50" font-size="9.2">{body}</text>')
 
-    parts.append(f'<text x="26" y="344" fill="#6c7a89" font-size="10.5">Raw GPU draw: {raw_gpu_j:.0f}J. Active GPU energy subtracts estimated idle power; CPU-side energy is labeled separately.</text>')
+    cpu_note = "CPU package energy would require bare-metal RAPL or an external wall meter; TDP estimates are not used as measured joules."
+    parts.append(f'<text x="26" y="344" fill="#6c7a89" font-size="10.5">{cpu_note}</text>')
     parts.append("</svg>")
     path.write_text("".join(parts), encoding="utf-8")
     return path
@@ -1101,23 +1158,23 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <table>
           <thead><tr><th>Question</th><th>Measured Signals</th><th>Why It Matters</th></tr></thead>
           <tbody>
-            <tr><td>Bigger model?</td><td>toy score, latency, joules, VRAM</td><td>find diminishing returns</td></tr>
-            <tr><td>Quantize?</td><td>q4/q8/fp16, tokens/J</td><td>fit smaller hardware</td></tr>
-            <tr><td>Which workload?</td><td>latency slices, joules, cost, score</td><td>avoid one-model thinking</td></tr>
+            <tr><td>Bigger model?</td><td>toy score, latency, GPU joules, VRAM</td><td>find diminishing returns</td></tr>
+            <tr><td>Quantize?</td><td>q4/q8/fp16, GPU tokens/J</td><td>fit smaller hardware</td></tr>
+            <tr><td>Which workload?</td><td>latency slices, GPU joules, cost, score</td><td>avoid one-model thinking</td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="section">
         <div class="section-title blue">Measurement Pipeline</div>
-        <p>Each run produces one row of metrics: latency slices, token counts, active-device energy, memory, workload score, and request-cost estimates.</p>
+        <p>Each run produces one row of metrics: latency slices, token counts, GPU active energy, memory, workload score, and request-cost estimates.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
           <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM; CPU uses RAPL or labeled TDP estimate.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM at 0.1s (~10Hz). CPU package joules require RAPL/bare metal; this VM only has a labeled TDP estimate.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib generate latency waterfalls, cost bars, and active-energy figures.</div></div>
         </div>
-        <div class="callout caution"><strong>Energy attribution matters:</strong> active-device energy is cleaner for model comparison; total wall energy is better for full-machine cost.</div>
+        <div class="callout caution"><strong>Energy attribution matters:</strong> measured GPU active energy is used for model-energy claims. CPU TDP/utilization estimates are retained in the CSV but excluded from measured-energy charts.</div>
       </div>
 
       <div class="section">
@@ -1134,12 +1191,12 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       </div>
 
       <div class="section">
-        <div class="section-title">Measured Energy Trace for One LLM</div>
+        <div class="section-title">Measured GPU Energy Trace for One LLM</div>
         <div class="figure">
           <div class="fig-caption"><span>Measured example: CodeLlama 7B Q4 chat on L40S</span><span>CPU + RAM + GPU + VRAM</span></div>
           <div class="fig-body"><img class="chart chart-life" src="request_lifecycle.svg" alt="Measured energy trace"></div>
         </div>
-        <div class="callout trace-note"><strong>How to read it:</strong> one measured CodeLlama 7B Q4 chat request. The cards show active-device joules, latency, and peak VRAM; the trace locates Python client work, prefill, GPU inference, KV cache, sampling, and response parsing.</div>
+        <div class="callout trace-note"><strong>How to read it:</strong> one CodeLlama 7B Q4 chat request on L40S. The cards show measured idle-adjusted GPU joules, raw GPU joules, latency, and peak VRAM. CPU package joules were unavailable in the VM and are not used as measured energy.</div>
       </div>
     </div>
 
@@ -1150,10 +1207,10 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <div class="tagline">Scaling parameters often increases infrastructure cost faster than model quality.</div>
         <p class="note">Same-family comparisons isolate parameter count: Gemma 2B/7B, Phi3 3.8B/14B, Granite 3B/8B/20B, CodeLlama 7B/13B where present.</p>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: toy/code score, energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
+          <div class="fig-caption"><span>Steady-state measured benchmark: toy/code score, GPU energy, latency, and VRAM</span><span>SAME-FAMILY SCALING</span></div>
           <div class="fig-body"><img class="chart chart-large" src="learning1_scaling_tradeoffs.png" alt="Scaling tradeoffs"></div>
         </div>
-        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Developer lesson: bigger is not automatically cheaper, faster, more deployable, or more practical.</div>
+        <div class="callout"><strong>Score note:</strong> the quality panel is a tiny code-generation pass rate, not a claim that lower-parameter models are universally smarter. Cold model-load rows are excluded from this comparison so the plot reflects steady-state requests.</div>
       </div>
 
       <div class="section">
@@ -1171,19 +1228,19 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     <div class="col">
       <div class="section">
         <div class="section-title">Learning 3: Energy Depends on the Workload</div>
-        <div class="badge">COMMON WORKLOADS · ACTIVE-DEVICE JOULES</div>
+        <div class="badge">COMMON WORKLOADS · MEASURED GPU JOULES</div>
         <div class="tagline">Chat, document summaries, RAG, and embeddings do not stress the same parts of the stack.</div>
         <div class="figure">
-          <div class="fig-caption"><span>Measured benchmark: active-device energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
+          <div class="fig-caption"><span>Measured benchmark: GPU active energy by scenario</span><span>JOULES / REQUEST · LOWER IS BETTER</span></div>
           <div class="fig-body"><img class="chart chart-mid" src="workload_active_device_energy.png" alt="Active device energy for chat, summarization, and embeddings"></div>
         </div>
-        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches, so the benchmark must be repeated per scenario.</div>
+        <div class="callout"><strong>How to read it:</strong> each panel is a different workload. These are measured idle-adjusted GPU joules, not CPU energy. A model/hardware pair that is cheap for chat may not be cheap for long summaries or embedding batches.</div>
       </div>
 
       <div class="section">
         <div class="section-title blue">CPU vs GPU: The Scale Inflection Point</div>
         <div class="badge">HARDWARE SCALE · CONCEPTUAL HEURISTIC</div>
-        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not the same as throughput.</p>
+        <p class="note">Hardware choice changes when prompts, outputs, batching, or concurrency grow. Single-request latency is not throughput, and CPU energy was not measured in this VM.</p>
         <div class="figure">
           <div class="fig-caption"><span>Conceptual deployment heuristic, not measured concurrency data</span><span>CPU-ONLY VS GPU + BATCHING</span></div>
           <div class="fig-body"><img class="chart chart-small" src="learning3_cpu_gpu_tradeoff.png" alt="CPU GPU tradeoff"></div>
@@ -1206,7 +1263,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
             <tr><td>4</td><td>If the workload changes, re-benchmark; do not reuse one winner.</td></tr>
             <tr><td>5</td><td>If concurrency grows, use GPU batching.</td></tr>
             <tr><td>6</td><td>If the workload is tiny and local, CPU may be good enough.</td></tr>
-            <tr><td>7</td><td>Track tokens/joule, not just accuracy.</td></tr>
+            <tr><td>7</td><td>Track measured GPU tokens/joule; use bare-metal RAPL or a wall meter for CPU energy.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1308,8 +1365,9 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
         for workload in sorted(summary["workload"].dropna().unique()):
             sub = summary[summary["workload"].eq(workload)].copy()
             quality = sub.sort_values(["score", "total_latency_s"], ascending=[False, True]).head(1)
-            energy = sub.sort_values("active_device_energy_j", ascending=True).head(1)
-            efficiency = sub.sort_values("active_tokens_per_joule", ascending=False).head(1)
+            measured = sub[sub["active_device_energy_j"].notna()].copy()
+            energy = measured.sort_values("active_device_energy_j", ascending=True).head(1)
+            efficiency = measured.sort_values("active_tokens_per_joule", ascending=False).head(1)
             q = quality.iloc[0] if not quality.empty else None
             e = energy.iloc[0] if not energy.empty else None
             eff = efficiency.iloc[0] if not efficiency.empty else None
@@ -1327,10 +1385,13 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
         "params_b",
         "quantization",
         "hardware_profile",
+        "cpu_energy_source",
+        "gpu_energy_source",
         "workload",
         "score",
         "total_latency_s",
         "active_device_energy_j",
+        "estimated_active_device_energy_j",
         "active_tokens_per_joule",
         "gpu_mem_peak_mb",
         "cost_per_request_usd",
@@ -1346,18 +1407,18 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
 
     chart_sections = {
         "poster": [
-            ("learning1_scaling_tradeoffs.png", "Learning 1: Bigger models have diminishing returns", "same architecture", "Same-family size comparisons reveal where quality flattens but energy, latency, or VRAM keep rising.", "Read each family line left-to-right; lower energy/latency/VRAM is better, higher toy score is better.", "wide"),
+            ("learning1_scaling_tradeoffs.png", "Learning 1: Bigger models have diminishing returns", "same architecture", "Same-family size comparisons use steady-state GPU rows so cold Ollama load does not distort the model-size story.", "Read each family line left-to-right; lower GPU energy/latency/VRAM is better, higher toy score is better.", "wide"),
             ("learning2_quantization_tradeoffs.png", "Learning 2: Quantization changes economics", "same model", "FP16 is the 100% baseline; q8/q4 show how representation changes deployment cost.", "Left panel costs should go down; right panel benefits should stay high or rise.", "wide"),
-            ("workload_active_device_energy.png", "Learning 3: Energy depends on workload", "common workloads", "Chat, summaries, RAG-style search, and embeddings do not stress the same parts of the stack.", "Compare within a panel, not across every panel; lower joules means less active-device energy.", "wide"),
+            ("workload_active_device_energy.png", "Learning 3: Energy depends on workload", "common workloads", "Chat, summaries, RAG-style search, and embeddings do not stress the same parts of the stack.", "Compare within a panel; lower bars mean less measured idle-adjusted GPU NVML energy. CPU VM estimates are excluded.", "wide"),
             ("learning3_cpu_gpu_tradeoff.png", "CPU vs GPU scale inflection point", "conceptual heuristic", "Hardware choice changes when batch size, concurrency, prompt length, or output length grows.", "This is a deployment heuristic, not a measured concurrency benchmark.", ""),
         ],
         "workloads": [
             ("latency_waterfall_chat.png", "Chat latency waterfall", "measured slices", "A single chat call has client, prefill, inference, and post-processing pieces.", "The waterfall shows where time accumulates before the response is done.", "wide"),
             ("latency_waterfall_summarization.png", "Summarization latency waterfall", "measured slices", "Long documents make prefill and generation more visible than small chat prompts.", "Use this to explain why document workflows feel different from chat.", "wide"),
             ("cost_bars_chat.png", "Chat cost bars", "cost estimate", "Cost per request and cost per 1,000 tokens can tell different stories.", "Use the two panels together; low per-request cost can still hide inefficient token economics.", ""),
-            ("energy_active_device_chat.png", "Active-device energy: chat", "joules/request", "Small chat prompts expose overheads and short-output behavior.", "Lower bars use less active-device energy for this workload.", ""),
-            ("energy_active_device_summarization.png", "Active-device energy: summarization", "joules/request", "Longer inputs and outputs reveal bigger model and hardware differences.", "Compare CPU and GPU rows as active-device estimates, not full wall energy.", ""),
-            ("energy_active_device_batch_embeddings.png", "Active-device energy: batch embeddings", "small-batch counterexample", "Tiny embedding batches may not amortize GPU overhead.", "Increase batch size before assuming the GPU is cheaper.", ""),
+            ("energy_active_device_chat.png", "Energy indicators: chat", "legacy poster artifact", "Earlier chart generated from raw energy columns; treat CPU rows as estimates unless RAPL is present.", "Use the corrected measured-GPU workload chart for scientific energy claims.", ""),
+            ("energy_active_device_summarization.png", "Energy indicators: summarization", "legacy poster artifact", "Earlier chart generated from raw energy columns; treat CPU rows as estimates unless RAPL is present.", "Use the corrected measured-GPU workload chart for scientific energy claims.", ""),
+            ("energy_active_device_batch_embeddings.png", "Energy indicators: batch embeddings", "legacy poster artifact", "Tiny embedding batches may not amortize GPU overhead, but CPU energy needs RAPL or wall-meter validation.", "Increase batch size before assuming the GPU is cheaper.", ""),
             ("experiment_d_latency_waterfall.png", "CPU vs GPU latency slices", "hardware comparison", "The same pipeline can bottleneck differently on CPU and GPU.", "Look for the largest colored segment; that is where optimization should start.", "wide"),
         ],
         "experiments": [
@@ -1369,11 +1430,11 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
             ("experiment_c_workload_heatmap.png", "Experiment C: workload heatmap", "architecture/workload", "Similar-size models can specialize differently by workload.", "Rows are models, columns are tasks; color is measured task score.", ""),
             ("experiment_c_radar.png", "Experiment C: radar chart", "model profile", "Radar charts make model tradeoffs visible across several metrics at once.", "No single spoke is enough to select a deployment.", ""),
             ("experiment_d_cpu_gpu.png", "Experiment D: CPU vs GPU throughput", "hardware", "GPU advantage depends on model, workload shape, and batching.", "Treat single-request latency separately from throughput.", ""),
-            ("experiment_d_concurrency.png", "Experiment D: concurrency heuristic", "scale", "Concurrency changes the economics because the GPU can amortize work.", "Use this as the systems argument, not a one-off latency claim.", ""),
+            ("experiment_d_concurrency.png", "Experiment D: concurrency scaling", "scale", "Concurrency changes latency and throughput because the GPU can amortize work.", "This chart no longer plots CPU joules from VM TDP estimates.", ""),
         ],
         "systems": [
-            ("request_lifecycle.svg", "Measured energy trace for one LLM request", "full pipeline", "One call moves through Python client work, tokenization, RAM/VRAM, transformer inference, KV cache, sampling, and response parsing.", "The cards show active-device joules, latency, and VRAM for one measured run.", "wide"),
-            ("experiment_e_power_timeline.png", "GPU + CPU power timeline", "utilization trace", "Power is not constant during a request; spikes reveal load, inference, and idle phases.", "Use timelines to debug where energy is spent over time.", ""),
+            ("request_lifecycle.svg", "Measured GPU energy trace for one LLM request", "full pipeline", "One call moves through Python client work, tokenization, RAM/VRAM, transformer inference, KV cache, sampling, and response parsing.", "The cards show measured GPU joules, raw GPU draw, latency, and VRAM. CPU package joules were unavailable in the VM.", "wide"),
+            ("experiment_e_power_timeline.png", "GPU power + CPU utilization timeline", "utilization trace", "Power is not constant during a request; spikes reveal load, inference, and idle phases.", "GPU watts are measured by NVML; CPU line is utilization, not CPU joules.", ""),
             ("experiment_e_latency_trace.png", "Inference trace timeline", "observability", "Trace-style views turn an opaque LLM call into timed stages.", "Match slow stages to code paths or hardware bottlenecks.", ""),
             ("experiment_e_energy_sankey.svg", "Sankey energy flow", "energy accounting", "Energy attribution needs a model of the request lifecycle.", "Sankey widths are explanatory; exact values come from the CSV columns.", ""),
             ("memory_movement.svg", "Memory movement diagram", "CPU/RAM/GPU/VRAM", "Moving tokens, weights, and KV cache can be just as important as raw compute.", "Memory is often the hidden deployment constraint.", ""),
@@ -1532,7 +1593,7 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
           <div>
             <span class="badge">Start here</span>
             <h2>What This Dashboard Adds Beyond The Poster</h2>
-            <p class="page-lede">The poster tells the story in three learnings. This companion UI shows the evidence behind it: latency waterfalls, cost bars, active-device energy, scaling plots, quantization comparisons, CPU/GPU views, system traces, and the summarized data table.</p>
+            <p class="page-lede">The poster tells the story in three learnings. This companion UI shows the evidence behind it: latency waterfalls, cost bars, measured GPU energy, scaling plots, quantization comparisons, CPU/GPU views, system traces, and the summarized data table.</p>
           </div>
           <div class="panel"><h3>Run context</h3><p>{esc(hardware_labels)}</p><p><code>metrics_enriched.csv</code> and <code>summary_enriched.csv</code> power this page.</p></div>
         </div>
@@ -1554,9 +1615,14 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
           <div class="panel">
             <h3>How To Use The Evidence</h3>
             <p><strong>Compare within an experimental slice.</strong> Same-family size charts answer parameter scaling. Same-model precision charts answer quantization. Workload charts answer model routing.</p>
-            <p><strong>Track tokens per joule.</strong> Accuracy alone hides the infrastructure cost of every generated token.</p>
-            <p><strong>Keep energy views honest.</strong> Active-device energy helps compare models; total wall energy is better for full-machine cost.</p>
+            <p><strong>Track measured GPU tokens per joule.</strong> Accuracy alone hides the infrastructure cost of every generated token.</p>
+            <p><strong>Keep energy views honest.</strong> In this Lightning VM, GPU energy is measured via NVML at 0.1s (~10Hz). CPU package joules were not measured because RAPL was unavailable.</p>
           </div>
+        </div>
+        <div class="panel" style="margin-top:18px">
+          <h3>Energy Attribution Correction</h3>
+          <p><strong>CPU energy in this VM is not a measured value.</strong> Rows marked <code>cpu:tdp_estimate</code> are utilization/TDP estimates. They remain in the CSV for transparency, but measured-energy charts exclude them unless a future run has <code>cpu:rapl</code>.</p>
+          <p><strong>Cold model-load rows are separated.</strong> Raw CSVs keep first-load requests; the poster learning charts use steady-state rows where <code>load_s &lt;= 2s</code> so a one-time Ollama load does not become a model-size claim.</p>
         </div>
       </section>
 
@@ -1580,7 +1646,7 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
         <div class="grid">{img_card(*chart_sections["poster"][2])}{img_card(*chart_sections["experiments"][5])}{img_card(*chart_sections["experiments"][6])}</div>
         <div class="panel" style="margin-top:18px">
           <h3>Measured Winners By Workload</h3>
-          <table><thead><tr><th>Workload</th><th>Highest score</th><th>Lowest active energy</th><th>Best active tokens/J</th></tr></thead><tbody>{workload_rows}</tbody></table>
+          <table><thead><tr><th>Workload</th><th>Highest score</th><th>Lowest measured GPU energy</th><th>Best measured GPU tokens/J</th></tr></thead><tbody>{workload_rows}</tbody></table>
         </div>
       </section>
 
@@ -1634,12 +1700,12 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
     const table = document.getElementById('dataTable');
     const search = document.getElementById('tableSearch');
     const workloadFilter = document.getElementById('workloadFilter');
-    const columns = [
-      ['model_label', 'Model'], ['workload', 'Workload'], ['hardware_profile', 'Hardware'],
-      ['params_b', 'B'], ['quantization', 'Quant'], ['score', 'Score'], ['total_latency_s', 'Latency s'],
-      ['active_device_energy_j', 'Active J'], ['active_tokens_per_joule', 'Tok/J'],
-      ['gpu_mem_peak_mb', 'Peak VRAM MB'], ['cost_per_request_usd', 'Cost/request']
-    ];
+	    const columns = [
+	      ['model_label', 'Model'], ['workload', 'Workload'], ['hardware_profile', 'Hardware'],
+	      ['cpu_energy_source', 'CPU source'], ['params_b', 'B'], ['quantization', 'Quant'], ['score', 'Score'], ['total_latency_s', 'Latency s'],
+	      ['active_device_energy_j', 'Measured GPU J'], ['estimated_active_device_energy_j', 'CPU est. J'], ['active_tokens_per_joule', 'GPU Tok/J'],
+	      ['gpu_mem_peak_mb', 'Peak VRAM MB'], ['cost_per_request_usd', 'Cost/request']
+	    ];
     function unique(values) {{ return Array.from(new Set(values.filter(Boolean))).sort(); }}
     unique(rows.map(row => row.workload)).forEach(workload => {{
       const option = document.createElement('option');
@@ -1651,8 +1717,8 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
       if (value === null || value === undefined || Number.isNaN(value)) return 'n/a';
       if (typeof value === 'number') {{
         if (key === 'cost_per_request_usd') return '$' + value.toFixed(6);
-        if (['score','total_latency_s','active_tokens_per_joule'].includes(key)) return value.toFixed(2);
-        if (['active_device_energy_j','gpu_mem_peak_mb'].includes(key)) return Math.round(value).toLocaleString();
+	        if (['score','total_latency_s','active_tokens_per_joule'].includes(key)) return value.toFixed(2);
+	        if (['active_device_energy_j','estimated_active_device_energy_j','gpu_mem_peak_mb'].includes(key)) return Math.round(value).toLocaleString();
         return value.toString();
       }}
       return String(value).replaceAll('_', ' ');
@@ -1720,9 +1786,11 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
             cpu_row = cpu.iloc[0]
             gpu_row = gpu.iloc[0]
             speedup = cpu_row["total_latency_s"] / max(gpu_row["total_latency_s"], 1e-9)
+            cpu_est = cpu_row.get("estimated_active_device_energy_j", np.nan)
+            cpu_energy_text = f"{cpu_est:.0f}J est." if not pd.isna(cpu_est) else "CPU J n/a"
             rows.append(
-                f"<tr><td>{label}</td><td>{cpu_row['total_latency_s']:.2f}s / {cpu_row['active_device_energy_j']:.0f}J</td>"
-                f"<td class=\"best\">{gpu_row['total_latency_s']:.2f}s / {gpu_row['active_device_energy_j']:.0f}J</td>"
+                f"<tr><td>{label}</td><td>{cpu_row['total_latency_s']:.2f}s / {cpu_energy_text}</td>"
+                f"<td class=\"best\">{gpu_row['total_latency_s']:.2f}s / {gpu_row['active_device_energy_j']:.0f}J measured GPU</td>"
                 f"<td>{speedup:.1f}x faster on GPU</td></tr>"
             )
         return "".join(rows) or '<tr><td colspan="4">CPU/GPU comparison not available.</td></tr>'
@@ -1730,7 +1798,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     def top_efficiency_rows() -> str:
         if summary.empty or "active_tokens_per_joule" not in summary:
             return '<tr><td colspan="4">Run benchmarks to populate this table.</td></tr>'
-        data = summary.sort_values("active_tokens_per_joule", ascending=False).head(5)
+        data = summary[summary["active_tokens_per_joule"].notna()].sort_values("active_tokens_per_joule", ascending=False).head(5)
         rows = []
         for _, row in data.iterrows():
             rows.append(
@@ -1905,7 +1973,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Deterministic prompts for code, docs, chat, labels, search documents, and embedding batches.</div></div>
           <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama / OpenAI-compatible adapter with row-level request logs and repeatable model registry.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM; CPU uses RAPL when exposed or a labeled utilization/TDP estimate.</div></div>
+	          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM at 0.1s (~10Hz). CPU package energy requires RAPL/bare metal; VM TDP estimates are labels, not measurements.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas summaries generate scaling curves, frontiers, heatmaps, waterfalls, timelines, and poster-ready assets.</div></div>
         </div>
         <p class="note">For Ollama, tokenization is reported as prompt evaluation / prefill because the server does not expose a pure tokenizer-only timer.</p>
@@ -2002,8 +2070,8 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
           <tbody>
             <tr><td><code>gpu_energy_j</code></td><td>integrated NVML watts over request time</td><td>raw device draw</td></tr>
             <tr><td><code>net_gpu_energy_j</code></td><td>GPU joules minus idle baseline x elapsed</td><td>active inference view</td></tr>
-            <tr><td><code>cpu_energy_j</code></td><td>RAPL if available, otherwise TDP x utilization x time</td><td>CPU rows</td></tr>
-            <tr><td><code>tokens/J</code></td><td>tokens divided by active device joules</td><td class="best">best field metric</td></tr>
+	            <tr><td><code>cpu_energy_j</code></td><td>RAPL if available; otherwise labeled TDP estimate only</td><td>not measured in VM</td></tr>
+	            <tr><td><code>tokens/J</code></td><td>tokens divided by measured active GPU joules</td><td class="best">best GPU field metric</td></tr>
           </tbody>
         </table>
       </div>
