@@ -2,7 +2,7 @@
 
 __all__ = [
     "energy",
-    "ollama_client",
+    "docker_model_runner_client",
     "registry",
     "runner",
     "visuals",

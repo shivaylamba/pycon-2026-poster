@@ -1170,7 +1170,7 @@ def build_story_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <p>Each run produces one row of metrics: latency slices, token counts, GPU active energy, memory, workload score, and request-cost estimates.</p>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Repeatable prompts and document sets for each workload.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Docker Model Runner/OpenAI-compatible adapter wraps model calls and response logs.</div></div>
           <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU power/utilization/VRAM at 0.1s (~10Hz). CPU package joules require RAPL/bare metal; this VM only has a labeled TDP estimate.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas + matplotlib generate latency waterfalls, cost bars, and active-energy figures.</div></div>
         </div>
@@ -1407,7 +1407,7 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
 
     chart_sections = {
         "poster": [
-            ("learning1_scaling_tradeoffs.png", "Learning 1: Bigger models have diminishing returns", "same architecture", "Same-family size comparisons use steady-state GPU rows so cold Ollama load does not distort the model-size story.", "Read each family line left-to-right; lower GPU energy/latency/VRAM is better, higher toy score is better.", "wide"),
+            ("learning1_scaling_tradeoffs.png", "Learning 1: Bigger models have diminishing returns", "same architecture", "Same-family size comparisons use steady-state GPU rows so cold Docker Model Runner load does not distort the model-size story.", "Read each family line left-to-right; lower GPU energy/latency/VRAM is better, higher toy score is better.", "wide"),
             ("learning2_quantization_tradeoffs.png", "Learning 2: Quantization changes economics", "same model", "FP16 is the 100% baseline; q8/q4 show how representation changes deployment cost.", "Left panel costs should go down; right panel benefits should stay high or rise.", "wide"),
             ("workload_active_device_energy.png", "Learning 3: Energy depends on workload", "common workloads", "Chat, summaries, RAG-style search, and embeddings do not stress the same parts of the stack.", "Compare within a panel; lower bars mean less measured idle-adjusted GPU NVML energy. CPU VM estimates are excluded.", "wide"),
             ("learning3_cpu_gpu_tradeoff.png", "CPU vs GPU scale inflection point", "conceptual heuristic", "Hardware choice changes when batch size, concurrency, prompt length, or output length grows.", "This is a deployment heuristic, not a measured concurrency benchmark.", ""),
@@ -1622,7 +1622,7 @@ def build_fieldguide_dashboard(results_dir: Path, assets: Path, path: Path) -> P
         <div class="panel" style="margin-top:18px">
           <h3>Energy Attribution Correction</h3>
           <p><strong>CPU energy in this VM is not a measured value.</strong> Rows marked <code>cpu:tdp_estimate</code> are utilization/TDP estimates. They remain in the CSV for transparency, but measured-energy charts exclude them unless a future run has <code>cpu:rapl</code>.</p>
-          <p><strong>Cold model-load rows are separated.</strong> Raw CSVs keep first-load requests; the poster learning charts use steady-state rows where <code>load_s &lt;= 2s</code> so a one-time Ollama load does not become a model-size claim.</p>
+          <p><strong>Cold model-load rows are separated.</strong> Raw CSVs keep first-load requests; the poster learning charts use steady-state rows where <code>load_s &lt;= 2s</code> so a one-time Docker Model Runner load does not become a model-size claim.</p>
         </div>
       </section>
 
@@ -1926,7 +1926,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
     <div class="center">
       <h1>Cost, Energy &amp; Infrastructure Tradeoffs of Everyday LLM Workloads:<br>A Visual Python Field Guide</h1>
       <div class="authors">Shivay Lamba &nbsp;&nbsp; Suvrakamal Das</div>
-      <div class="affiliations">Python scripts, notebooks, Ollama, Hugging Face models, NVML, pandas, matplotlib, Plotly</div>
+      <div class="affiliations">Python scripts, notebooks, Docker Model Runner, Hugging Face models, NVML, pandas, matplotlib, Plotly</div>
     </div>
     <div class="logo-area" style="visibility:hidden;">
       <div class="py-box">Py</div>
@@ -1972,17 +1972,17 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
         <div class="section-title blue">Measurement Pipeline</div>
         <div class="stack">
           <div class="stack-row"><div class="stack-tag tag-fixtures">Fixtures</div><div class="stack-desc">Deterministic prompts for code, docs, chat, labels, search documents, and embedding batches.</div></div>
-          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Ollama / OpenAI-compatible adapter with row-level request logs and repeatable model registry.</div></div>
+          <div class="stack-row"><div class="stack-tag tag-client">Client</div><div class="stack-desc">Docker Model Runner / OpenAI-compatible adapter with row-level request logs and repeatable model registry.</div></div>
 	          <div class="stack-row"><div class="stack-tag tag-energy">Energy</div><div class="stack-desc">NVML samples GPU watts, utilization, and VRAM at 0.1s (~10Hz). CPU package energy requires RAPL/bare metal; VM TDP estimates are labels, not measurements.</div></div>
           <div class="stack-row"><div class="stack-tag tag-visual">Visuals</div><div class="stack-desc">pandas summaries generate scaling curves, frontiers, heatmaps, waterfalls, timelines, and poster-ready assets.</div></div>
         </div>
-        <p class="note">For Ollama, tokenization is reported as prompt evaluation / prefill because the server does not expose a pure tokenizer-only timer.</p>
+        <p class="note">For Docker Model Runner, tokenization is reported as prompt evaluation / prefill because the server does not expose a pure tokenizer-only timer.</p>
       </div>
 
       <div class="section">
         <div class="section-title">Models Tried</div>
         <div class="chips">{chips}</div>
-        <p class="note">The same code supports additional Ollama, vLLM, Hugging Face, and API-compatible endpoints.</p>
+        <p class="note">The same code supports additional Docker Model Runner, vLLM, Hugging Face, and API-compatible endpoints.</p>
       </div>
 
       <div class="section">
@@ -2039,7 +2039,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       <div class="section">
         <div class="section-title">CPU vs GPU Deployment</div>
         <p>
-          CPU rows force Ollama with <code>num_gpu=0</code>; GPU rows let Ollama place the model on {hardware_name}. This isolates practical hardware deployment tradeoffs for the same benchmark code.
+          CPU rows use a CPU-only deployment profile; GPU rows let Docker Model Runner place the model on {hardware_name}. This isolates practical hardware deployment tradeoffs for the same benchmark code.
         </p>
         <div class="figure">
           <div class="fig-caption"><span>Experiment D - throughput</span><span>CPU-only vs GPU</span></div>
@@ -2100,7 +2100,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
   </div>
   <div class="conf-bar">
     <span>PyCon US Poster Session</span>
-    <span>Python scripts + pandas + matplotlib + Plotly + Ollama + NVML</span>
+    <span>Python scripts + pandas + matplotlib + Plotly + Docker Model Runner + NVML</span>
   </div>
 </div>
 </body>

@@ -13,7 +13,7 @@ class MockClient:
     """Deterministic local stand-in used for notebook smoke tests.
 
     It lets the full benchmark and plotting pipeline run on laptops that do not
-    have Ollama, GPUs, API keys, or model weights installed.
+    have Docker Model Runner, GPUs, API keys, or model weights installed.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:

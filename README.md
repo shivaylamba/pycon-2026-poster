@@ -137,9 +137,9 @@ Each run writes a tidy `metrics.csv` with:
   so CPU estimates are not confused with measured RAPL values
 - task fields such as classification correctness and retrieved RAG document ids
 
-For Ollama, `tokenization_s` is the backend's prompt-evaluation/prefill time.
-Ollama does not expose a pure tokenizer-only timer, so the raw field is kept
-honest and poster labels use "Tokenization / prefill".
+Docker Model Runner uses an OpenAI-compatible API (via the standard `openai`
+Python SDK). Server-side timing buckets such as tokenization and decode are not
+exposed, so all request latency is attributed to wall-clock time.
 
 ## Quick Smoke Test
 
@@ -163,17 +163,17 @@ python scripts/make_plots.py \
   --out results/mock_smoke/figures
 ```
 
-## Run On A CPU/GPU VM With Ollama
+## Run On A CPU/GPU VM With Docker Model Runner
 
-Install Ollama on the VM, then pull the example models or replace them in
-`configs/example_ollama.yaml`.
+Install Docker Model Runner on the VM, then pull the example models or replace them in
+`configs/example_docker_model_runner.yaml`.
 
 ```bash
-ollama pull llama3.2:1b
-ollama pull qwen2.5:3b
-ollama pull mistral:7b-instruct-v0.3
-ollama pull nomic-embed-text
-ollama pull mxbai-embed-large
+docker model pull llama3.2:1b
+docker model pull qwen2.5:3b
+docker model pull mistral:7b-instruct-v0.3
+docker model pull nomic-embed-text
+docker model pull mxbai-embed-large
 ```
 
 Then run:
@@ -183,19 +183,19 @@ cd /Users/shivaylamba/Downloads/Replication_package/pycon_llm_cost_energy
 source .venv/bin/activate
 
 python scripts/run_benchmark.py \
-  --config configs/example_ollama.yaml \
-  --out results/ollama_vm \
+  --config configs/example_docker_model_runner.yaml \
+  --out results/docker_model_runner_vm \
   --repeats 3
 
 python scripts/make_plots.py \
-  --metrics results/ollama_vm/metrics.csv \
-  --out results/ollama_vm/figures
+  --metrics results/docker_model_runner_vm/metrics.csv \
+  --out results/docker_model_runner_vm/figures
 ```
 
 The config defines two hardware profiles:
 
-- `cpu`: passes `num_gpu: 0` to Ollama.
-- `gpu`: lets Ollama use its automatic GPU placement and records NVIDIA power
+- `cpu`: CPU-only deployment profile.
+- `gpu`: lets Docker Model Runner use its automatic GPU placement and records NVIDIA power
   through NVML when available.
 
 If Linux RAPL counters are readable, CPU package energy is measured directly.
@@ -208,12 +208,12 @@ and report net work energy above idle. In generated figures,
 `gpu_energy_j` remains the raw integrated NVML reading, while
 `net_gpu_energy_j = gpu_energy_j - idle_gpu_watts * elapsed_s`. On Lightning
 VMs, the idle GPU baseline can be inferred from CPU-forced rows because the GPU
-stays attached while Ollama runs with `num_gpu: 0`. CPU rows in the bundled
+stays attached while Docker Model Runner runs CPU-only. CPU rows in the bundled
 exports use the explicit TDP/utilization estimate because RAPL counters were
 not available; they are not plotted as measured energy in the corrected poster
 assets.
 
-Model-comparison summaries also exclude cold Ollama load rows (`load_s > 2s`)
+Model-comparison summaries also exclude cold Docker Model Runner load rows (`load_s > 2s`)
 so first-request model loading does not distort steady-state latency or energy
 claims. The raw `metrics_enriched.csv` keeps those rows and flags them with
 `is_cold_load_row`.
@@ -221,19 +221,19 @@ claims. The raw `metrics_enriched.csv` keeps those rows and flags them with
 ## Notebooks
 
 - `notebooks/llm_cost_energy_field_guide.ipynb`: run the full workflow from a
-  notebook, starting with the mock provider and optionally switching to Ollama.
+  notebook, starting with the mock provider and optionally switching to Docker Model Runner.
 - `notebooks/poster_visuals_from_metrics.ipynb`: load any `metrics.csv`,
   regenerate figures, and produce summary tables for the poster.
 
 ## Adding Models
 
-Edit `configs/example_ollama.yaml`:
+Edit `configs/example_docker_model_runner.yaml`:
 
 ```yaml
 generation_models:
   - name: your-model-tag
     label: Your Model
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: your-family
     size: 7B
 ```
@@ -248,8 +248,8 @@ pricing:
 ```
 
 Hosted APIs usually do not expose server-side tokenization/inference timings, so
-their latency breakdowns are wall-time oriented. Local Ollama runs expose more
-of the backend timing.
+their latency breakdowns are wall-time oriented. Docker Model Runner also uses an
+OpenAI-compatible API, so its latency breakdowns are wall-time oriented as well.
 
 ## Poster Heuristics This Supports
 

@@ -4,7 +4,7 @@
 **Cost, Energy & Infrastructure Tradeoffs of Everyday LLM Workloads: A Visual Python Field Guide**
 
 ## Abstract
-This repository is a notebook-first and script-first benchmark kit for Python developers who want to measure practical LLM tradeoffs: latency, cost, and energy. It reproduces a poster workflow and dashboard workflow using local Ollama-backed models, CPU/GPU hardware profiles, and workload-level instrumentation. Outputs include reproducible CSVs, charts, traces, and a printable poster/dashboard bundle.
+This repository is a notebook-first and script-first benchmark kit for Python developers who want to measure practical LLM tradeoffs: latency, cost, and energy. It reproduces a poster workflow and dashboard workflow using local Docker Model Runner-backed models, CPU/GPU hardware profiles, and workload-level instrumentation. Outputs include reproducible CSVs, charts, traces, and a printable poster/dashboard bundle.
 
 ## What this repository does
 - Runs controlled benchmarks for everyday LLM tasks (chat, summarization, classification, RAG/semantic search, and embeddings).
@@ -41,7 +41,7 @@ The field-guide experiments are organized as:
 ## NVIDIA GPU setup used in this repository
 ### A100 run track (Lightning.ai)
 - Hardware: **NVIDIA A100-SXM4-40GB**
-- Profiles: CPU (`num_gpu: 0`) and GPU (`num_gpu: 999`) via Ollama provider configs
+- Profiles: CPU-only and GPU deployment via Docker Model Runner provider configs
 - Electricity pricing: `$0.18/kWh`
 - GPU energy: NVML sampled
 - CPU energy: TDP-based estimate when RAPL was unavailable

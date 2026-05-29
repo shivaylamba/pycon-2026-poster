@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Optional
 class ModelSpec:
     id: str
     label: str
-    ollama: str
+    docker_model_runner: str
     family: str
     architecture: str
     params_b: float
@@ -66,7 +66,7 @@ def specs_for(experiment: Optional[str] = None, include_embeddings: bool = False
 
 def by_id(model_id: str) -> ModelSpec:
     for spec in MODELS + EMBEDDING_MODELS:
-        if spec.id == model_id or spec.ollama == model_id:
+        if spec.id == model_id or spec.docker_model_runner == model_id:
             return spec
     raise KeyError(model_id)
 

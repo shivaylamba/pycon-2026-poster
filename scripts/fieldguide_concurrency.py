@@ -13,7 +13,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fieldguide.energy import EnergyTrace
-from fieldguide.ollama_client import OllamaClient
+from fieldguide.docker_model_runner_client import DockerModelRunnerClient
 from fieldguide.registry import by_id
 
 
@@ -32,18 +32,18 @@ HARDWARE = {
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a small Ollama concurrency scaling benchmark.")
-    parser.add_argument("--model", default="codellama-7b-q4", help="Model id or Ollama tag from fieldguide registry.")
+    parser = argparse.ArgumentParser(description="Run a small Docker Model Runner concurrency scaling benchmark.")
+    parser.add_argument("--model", default="codellama-7b-q4", help="Model id or Docker Model Runner tag from fieldguide registry.")
     parser.add_argument("--hardware", default="a100_gpu,cpu")
     parser.add_argument("--levels", default="1,2,4", help="Comma-separated concurrent request counts.")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--base-url", default="http://localhost:12434/v1")
     parser.add_argument("--max-tokens", type=int, default=96)
     args = parser.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    client = OllamaClient(args.base_url, timeout_s=1200)
+    client = DockerModelRunnerClient(args.base_url, timeout_s=1200)
     spec = by_id(args.model)
     rows: List[Dict[str, Any]] = []
 
@@ -55,7 +55,7 @@ def main() -> None:
             with EnergyTrace(interval_s=0.1, gpu_indices=profile["gpu_indices"], cpu_tdp_watts=profile["cpu_tdp_watts"]) as energy:
                 with ThreadPoolExecutor(max_workers=concurrency) as pool:
                     futures = [
-                        pool.submit(client.generate, spec.ollama, PROMPT, profile["options"], args.max_tokens)
+                        pool.submit(client.generate, spec.docker_model_runner, PROMPT, profile["options"], args.max_tokens)
                         for _ in range(concurrency)
                     ]
                     outputs = []
@@ -69,7 +69,7 @@ def main() -> None:
                 "run_id": run_id,
                 "model_id": spec.id,
                 "model_label": spec.label,
-                "ollama_model": spec.ollama,
+                "docker_model_runner_model": spec.docker_model_runner,
                 "hardware_profile": hw_name,
                 "hardware_label": profile["label"],
                 "concurrency": concurrency,
@@ -85,7 +85,7 @@ def main() -> None:
             energy.write_samples(out / "concurrency_power_samples.jsonl", run_id)
             pd.DataFrame(rows).to_csv(out / "concurrency_metrics.csv", index=False)
             print(json.dumps(rows[-1], default=str))
-        client.unload(spec.ollama)
+        client.unload(spec.docker_model_runner)
 
 
 if __name__ == "__main__":
