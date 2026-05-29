@@ -37,7 +37,7 @@ def main() -> None:
     parser.add_argument("--hardware", default="a100_gpu,cpu")
     parser.add_argument("--levels", default="1,2,4", help="Comma-separated concurrent request counts.")
     parser.add_argument("--out", required=True)
-    parser.add_argument("--base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--base-url", default="http://localhost:12434/v1")
     parser.add_argument("--max-tokens", type=int, default=96)
     args = parser.parse_args()
 

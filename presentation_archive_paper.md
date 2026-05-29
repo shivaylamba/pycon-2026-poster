@@ -41,7 +41,7 @@ The field-guide experiments are organized as:
 ## NVIDIA GPU setup used in this repository
 ### A100 run track (Lightning.ai)
 - Hardware: **NVIDIA A100-SXM4-40GB**
-- Profiles: CPU (`num_gpu: 0`) and GPU (`num_gpu: 999`) via Docker Model Runner provider configs
+- Profiles: CPU-only and GPU deployment via Docker Model Runner provider configs
 - Electricity pricing: `$0.18/kWh`
 - GPU energy: NVML sampled
 - CPU energy: TDP-based estimate when RAPL was unavailable

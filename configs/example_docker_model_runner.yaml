@@ -21,18 +21,17 @@ default_options:
 providers:
   docker_model_runner_local:
     type: docker_model_runner
-    base_url: http://localhost:11434
+    base_url: http://localhost:12434/v1
+    api_key: docker
     timeout_s: 900
 
 hardware_profiles:
   cpu:
     enabled: true
-    label: CPU / num_gpu=0
+    label: CPU
     cpu_tdp_watts:
     provider_options:
-      docker_model_runner:
-        num_gpu: 0
-        num_thread: 8
+      docker_model_runner: {}
   gpu:
     enabled: true
     label: GPU / Docker Model Runner auto

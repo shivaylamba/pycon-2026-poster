@@ -21,8 +21,8 @@ def main() -> None:
         if spec.docker_model_runner in seen:
             continue
         seen.add(spec.docker_model_runner)
-        print(f"==> docker model runner pull {spec.docker_model_runner}")
-        proc = subprocess.run(["docker", "model", "runner", "pull", spec.docker_model_runner])
+        print(f"==> docker model pull {spec.docker_model_runner}")
+        proc = subprocess.run(["docker", "model", "pull", spec.docker_model_runner])
         if proc.returncode != 0:
             print(f"FAILED: {spec.docker_model_runner}", file=sys.stderr)
 

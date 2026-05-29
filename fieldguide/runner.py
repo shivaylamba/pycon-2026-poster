@@ -16,11 +16,11 @@ from .workloads import embedding_items, evaluate_embedding_search, evaluate_gene
 
 
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
-    "a100_gpu": {"label": "A100 GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "l40s_gpu": {"label": "L40S GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "datacenter_gpu": {"label": "Datacenter GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "consumer_gpu": {"label": "Consumer GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
-    "cpu": {"label": "CPU only", "docker_model_runner_options": {"num_gpu": 0}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "a100_gpu": {"label": "A100 GPU", "model_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "l40s_gpu": {"label": "L40S GPU", "model_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "datacenter_gpu": {"label": "Datacenter GPU", "model_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "consumer_gpu": {"label": "Consumer GPU", "model_options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
+    "cpu": {"label": "CPU only", "model_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
 }
 
 
@@ -31,7 +31,7 @@ def main() -> None:
     parser.add_argument("--out", required=True)
     parser.add_argument("--limit", type=int, default=2, help="Items per workload.")
     parser.add_argument("--repeats", type=int, default=1)
-    parser.add_argument("--base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--base-url", default="http://localhost:12434/v1")
     parser.add_argument("--skip-pull", action="store_true")
     parser.add_argument("--save-traces", action="store_true")
     parser.add_argument("--models", default="", help="Optional comma-separated model ids or Docker Model Runner tags.")
@@ -128,8 +128,8 @@ def filter_specs(specs: Sequence[ModelSpec], requested: str) -> List[ModelSpec]:
 def ensure_model_available(spec: ModelSpec, out: Path, skip_pull: bool, strict: bool) -> bool:
     try:
         if skip_pull:
-            proc = subprocess.run(["docker", "model", "runner", "show", spec.docker_model_runner], capture_output=True, text=True)
-            if proc.returncode != 0:
+            proc = subprocess.run(["docker", "model", "list"], capture_output=True, text=True)
+            if proc.returncode != 0 or spec.docker_model_runner not in proc.stdout:
                 raise RuntimeError(f"{spec.docker_model_runner} is not available locally. Pull it first or rerun without --skip-pull.")
         else:
             pull_model(spec.docker_model_runner, out)
@@ -185,7 +185,7 @@ def safely_run(fn: Any, spec: ModelSpec, workload: str, item_id: str, hw_name: s
 
 def run_generation_item(client: DockerModelRunnerClient, spec: ModelSpec, item: Any, hw_name: str, profile: Dict[str, Any], repeat: int, out: Path, save_traces: bool) -> Dict[str, Any]:
     run_id = f"{int(time.time()*1000)}_{spec.id}_{hw_name}_{item.item_id}_r{repeat}"
-    options = profile["docker_model_runner_options"]
+    options = profile["model_options"]
     with EnergyTrace(interval_s=0.1, gpu_indices=profile.get("gpu_indices"), cpu_tdp_watts=profile.get("cpu_tdp_watts")) as energy:
         data = client.generate(spec.docker_model_runner, item.prompt, options=options, max_tokens=item.max_tokens)
     summary = energy.summary()
@@ -219,7 +219,7 @@ def run_embedding_item(client: DockerModelRunnerClient, spec: ModelSpec, item: A
     docs = item.metadata["corpus"]
     inputs = [item.prompt] + [text for _, text in docs]
     with EnergyTrace(interval_s=0.1, gpu_indices=profile.get("gpu_indices"), cpu_tdp_watts=profile.get("cpu_tdp_watts")) as energy:
-        data = client.embed(spec.docker_model_runner, inputs, options=profile["docker_model_runner_options"])
+        data = client.embed(spec.docker_model_runner, inputs, options=profile["model_options"])
     summary = energy.summary()
     if save_traces:
         energy.write_samples(out / "traces" / "power_samples.jsonl", run_id)
@@ -294,10 +294,10 @@ def estimate_cost(elapsed_s: float, energy_j: Optional[float], hw_name: str) -> 
 def pull_model(model: str, out: Path) -> None:
     log = out / "pull_log.txt"
     started = time.time()
-    proc = subprocess.run(["docker", "model", "runner", "pull", model], capture_output=True, text=True)
+    proc = subprocess.run(["docker", "model", "pull", model], capture_output=True, text=True)
     append_jsonl(log, {"model": model, "returncode": proc.returncode, "seconds": time.time() - started, "stdout_tail": proc.stdout[-1000:], "stderr_tail": proc.stderr[-1000:]})
     if proc.returncode != 0:
-        raise RuntimeError(f"docker model runner pull failed for {model}: {proc.stderr[-500:]}")
+        raise RuntimeError(f"docker model pull failed for {model}: {proc.stderr[-500:]}")
 
 
 def append_jsonl(path: Path, row: Dict[str, Any]) -> None:

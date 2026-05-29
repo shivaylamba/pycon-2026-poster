@@ -22,7 +22,7 @@ default_options:
 providers:
   docker_model_runner_local:
     type: docker_model_runner
-    base_url: http://localhost:11434
+    base_url: http://localhost:12434/v1
     timeout_s: 1200
 
 hardware_profiles:

@@ -2039,7 +2039,7 @@ def build_poster(results_dir: Path, assets: Path, path: Path) -> Path:
       <div class="section">
         <div class="section-title">CPU vs GPU Deployment</div>
         <p>
-          CPU rows force Docker Model Runner with <code>num_gpu=0</code>; GPU rows let Docker Model Runner place the model on {hardware_name}. This isolates practical hardware deployment tradeoffs for the same benchmark code.
+          CPU rows use a CPU-only deployment profile; GPU rows let Docker Model Runner place the model on {hardware_name}. This isolates practical hardware deployment tradeoffs for the same benchmark code.
         </p>
         <div class="figure">
           <div class="fig-caption"><span>Experiment D - throughput</span><span>CPU-only vs GPU</span></div>

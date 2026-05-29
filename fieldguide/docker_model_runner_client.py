@@ -3,64 +3,80 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
-import requests
+from openai import OpenAI
 
 
 class DockerModelRunnerClient:
-    def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout_s: int = 900) -> None:
+    """OpenAI-compatible client for Docker Model Runner (DMR).
+
+    DMR does not have its own Python SDK. It exposes an OpenAI-compatible API,
+    so we use the standard ``openai`` package to interact with models running
+    locally via Docker Desktop.  Default endpoint: ``http://localhost:12434/v1``.
+    """
+
+    def __init__(self, base_url: str = "http://localhost:12434/v1", timeout_s: int = 900, api_key: str = "docker") -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.client = OpenAI(api_key=api_key, base_url=self.base_url)
 
     def generate(self, model: str, prompt: str, options: Optional[Dict[str, Any]] = None, max_tokens: int = 128) -> Dict[str, Any]:
-        body = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "keep_alive": "10m",
-            "options": {"temperature": 0.0, "num_predict": max_tokens, "seed": 42, **(options or {})},
-        }
+        options = options or {}
+        messages = [{"role": "user", "content": prompt}]
         started = time.perf_counter()
-        response = requests.post(f"{self.base_url}/api/generate", json=body, timeout=self.timeout_s)
+        response = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=options.get("temperature", 0.0),
+            max_tokens=max_tokens,
+            seed=options.get("seed", 42),
+        )
         wall_s = time.perf_counter() - started
-        response.raise_for_status()
-        data = response.json()
-        data["request_wall_s"] = wall_s
+        usage = response.usage
+        text = response.choices[0].message.content or ""
+        data = {
+            "response": text,
+            "prompt_eval_count": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "eval_count": int(getattr(usage, "completion_tokens", 0) or 0),
+            "request_wall_s": wall_s,
+        }
         return data
 
     def embed(self, model: str, inputs: Iterable[str], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        body = {"model": model, "input": list(inputs), "keep_alive": "10m", "options": options or {}}
+        input_list = list(inputs)
         started = time.perf_counter()
-        response = requests.post(f"{self.base_url}/api/embed", json=body, timeout=self.timeout_s)
+        response = self.client.embeddings.create(model=model, input=input_list)
         wall_s = time.perf_counter() - started
-        response.raise_for_status()
-        data = response.json()
-        data["request_wall_s"] = wall_s
+        usage = response.usage
+        data = {
+            "embeddings": [item.embedding for item in response.data],
+            "prompt_eval_count": int(getattr(usage, "prompt_tokens", 0) or 0),
+            "request_wall_s": wall_s,
+        }
         return data
 
     def show(self, model: str) -> Dict[str, Any]:
-        response = requests.post(f"{self.base_url}/api/show", json={"model": model}, timeout=self.timeout_s)
-        response.raise_for_status()
-        return response.json()
+        # DMR does not have a model info endpoint like Ollama's /api/show.
+        # Return a minimal stub for compatibility.
+        return {"name": model, "backend": "docker_model_runner"}
 
     def unload(self, model: str) -> None:
-        try:
-            requests.post(f"{self.base_url}/api/generate", json={"model": model, "prompt": "", "keep_alive": 0}, timeout=60)
-        except Exception:
-            pass
+        # Docker Model Runner manages model lifecycle automatically;
+        # explicit unload is not needed.
+        pass
 
 
 def latency_parts_docker_model_runner(data: Dict[str, Any], wall_s: float) -> Dict[str, float]:
-    total = data.get("total_duration", 0) / 1e9 if data.get("total_duration") else wall_s
-    load = data.get("load_duration", 0) / 1e9
-    prefill = data.get("prompt_eval_duration", 0) / 1e9
-    decode = data.get("eval_duration", 0) / 1e9
-    post = max(0.0, wall_s - total)
-    network = max(0.0, total - load - prefill - decode)
+    """Build latency breakdown from a DMR response.
+
+    Because DMR uses the OpenAI-compatible API, server-side timing buckets
+    (prompt-eval, decode, load) are not available.  We attribute all latency
+    to the wall-clock request time.
+    """
     return {
-        "network_s": network,
-        "load_s": load,
-        "tokenization_s": prefill,
-        "inference_s": decode,
-        "postprocess_s": post,
+        "network_s": wall_s,
+        "load_s": 0.0,
+        "tokenization_s": 0.0,
+        "inference_s": 0.0,
+        "postprocess_s": 0.0,
         "total_latency_s": wall_s,
     }
