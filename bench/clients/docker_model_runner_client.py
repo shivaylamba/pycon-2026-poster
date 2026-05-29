@@ -8,8 +8,8 @@ import requests
 from .base import EmbeddingResult, GenerateResult
 
 
-class OllamaClient:
-    """Small HTTP adapter around Ollama's local API."""
+class DockerModelRunnerClient:
+    """Small HTTP adapter around Docker Model Runner's local API."""
 
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         config = config or {}
@@ -60,7 +60,7 @@ class OllamaClient:
         backend_total_s = _ns_to_s(raw.get("total_duration", 0))
         load_s = _ns_to_s(raw.get("load_duration", 0))
         backend_overhead_s = max(0.0, backend_total_s - prompt_eval_s - decode_s)
-        # Ollama exposes prompt evaluation and token generation, but not a pure
+        # Docker Model Runner exposes prompt evaluation and token generation, but not a pure
         # tokenizer timer. For this field guide we name prompt evaluation as the
         # tokenization/prefill bucket and keep the raw value for transparency.
         timings = {

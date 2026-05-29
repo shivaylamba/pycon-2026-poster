@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import requests
 
 
-class OllamaClient:
+class DockerModelRunnerClient:
     def __init__(self, base_url: str = "http://127.0.0.1:11434", timeout_s: int = 900) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
@@ -49,7 +49,7 @@ class OllamaClient:
             pass
 
 
-def latency_parts_ollama(data: Dict[str, Any], wall_s: float) -> Dict[str, float]:
+def latency_parts_docker_model_runner(data: Dict[str, Any], wall_s: float) -> Dict[str, float]:
     total = data.get("total_duration", 0) / 1e9 if data.get("total_duration") else wall_s
     load = data.get("load_duration", 0) / 1e9
     prefill = data.get("prompt_eval_duration", 0) / 1e9

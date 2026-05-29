@@ -11,20 +11,20 @@ from fieldguide.registry import EMBEDDING_MODELS, specs_for
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pull Ollama models for the field guide experiments.")
+    parser = argparse.ArgumentParser(description="Pull Docker Model Runner models for the field guide experiments.")
     parser.add_argument("--experiment", default="all", choices=["all", "A", "B", "C", "D", "E"])
     parser.add_argument("--include-embeddings", action="store_true")
     args = parser.parse_args()
     specs = specs_for(args.experiment, include_embeddings=args.include_embeddings or args.experiment in ("all", "C", "E"))
     seen = set()
     for spec in specs:
-        if spec.ollama in seen:
+        if spec.docker_model_runner in seen:
             continue
-        seen.add(spec.ollama)
-        print(f"==> ollama pull {spec.ollama}")
-        proc = subprocess.run(["ollama", "pull", spec.ollama])
+        seen.add(spec.docker_model_runner)
+        print(f"==> docker model runner pull {spec.docker_model_runner}")
+        proc = subprocess.run(["docker", "model", "runner", "pull", spec.docker_model_runner])
         if proc.returncode != 0:
-            print(f"FAILED: {spec.ollama}", file=sys.stderr)
+            print(f"FAILED: {spec.docker_model_runner}", file=sys.stderr)
 
 
 if __name__ == "__main__":

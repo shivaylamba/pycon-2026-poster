@@ -1,4 +1,4 @@
-id,label,ollama,family,architecture,params_b,quantization,precision_bits,specialization,experiments,enabled,notes
+id,label,docker_model_runner,family,architecture,params_b,quantization,precision_bits,specialization,experiments,enabled,notes
 gemma-2b-q4,Gemma 2B Q4,gemma:2b-instruct-q4_K_M,Gemma,Gemma,2.0,q4,4,general,A,True,
 gemma-7b-q4,Gemma 7B Q4,gemma:7b-instruct-q4_K_M,Gemma,Gemma,7.0,q4,4,general,"A,B,C",True,
 phi3-3.8b-q4,Phi-3 3.8B Q4,phi3:3.8b-mini-4k-instruct-q4_K_M,Phi3,Phi3,3.8,q4,4,general,A,True,

@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import pandas as pd
 
 from .clients.mock_client import MockClient
-from .clients.ollama_client import OllamaClient
+from .clients.docker_model_runner_client import DockerModelRunnerClient
 from .clients.openai_compatible_client import OpenAICompatibleClient
 from .config import deep_merge, load_config
 from .costs import cost_columns
@@ -336,8 +336,8 @@ def _client_for(provider_name: str, config: Dict[str, Any], clients: Dict[str, A
     provider_type = provider_cfg.get("type", provider_name)
     if provider_type == "mock":
         client = MockClient(provider_cfg)
-    elif provider_type == "ollama":
-        client = OllamaClient(provider_cfg)
+    elif provider_type == "docker_model_runner":
+        client = DockerModelRunnerClient(provider_cfg)
     elif provider_type in {"openai", "openai_compatible"}:
         client = OpenAICompatibleClient(provider_cfg)
     else:

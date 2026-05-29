@@ -10,7 +10,7 @@ Models used:
 - `qwen3-embedding:0.6b`
 - `qwen3-embedding:4b`
 
-`llama4:scout` was not run because Ollama lists it at 67 GB, which exceeds the 40 GB A100 VRAM in this session for a clean full-GPU comparison.
+`llama4:scout` was not run because Docker Model Runner lists it at 67 GB, which exceeds the 40 GB A100 VRAM in this session for a clean full-GPU comparison.
 
 Energy notes:
 

@@ -10,17 +10,17 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 import pandas as pd
 
 from .energy import EnergyTrace, hardware_snapshot
-from .ollama_client import OllamaClient, latency_parts_ollama
+from .docker_model_runner_client import DockerModelRunnerClient, latency_parts_docker_model_runner
 from .registry import EMBEDDING_MODELS, ModelSpec, registry_rows, specs_for
 from .workloads import embedding_items, evaluate_embedding_search, evaluate_generation, generation_workloads
 
 
 HARDWARE_PROFILES: Dict[str, Dict[str, Any]] = {
-    "a100_gpu": {"label": "A100 GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "l40s_gpu": {"label": "L40S GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "datacenter_gpu": {"label": "Datacenter GPU", "ollama_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
-    "consumer_gpu": {"label": "Consumer GPU", "ollama_options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
-    "cpu": {"label": "CPU only", "ollama_options": {"num_gpu": 0}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "a100_gpu": {"label": "A100 GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "l40s_gpu": {"label": "L40S GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "datacenter_gpu": {"label": "Datacenter GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
+    "consumer_gpu": {"label": "Consumer GPU", "docker_model_runner_options": {}, "cpu_tdp_watts": 75, "gpu_indices": [0]},
+    "cpu": {"label": "CPU only", "docker_model_runner_options": {"num_gpu": 0}, "cpu_tdp_watts": 120, "gpu_indices": [0]},
 }
 
 
@@ -34,7 +34,7 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://127.0.0.1:11434")
     parser.add_argument("--skip-pull", action="store_true")
     parser.add_argument("--save-traces", action="store_true")
-    parser.add_argument("--models", default="", help="Optional comma-separated model ids or Ollama tags.")
+    parser.add_argument("--models", default="", help="Optional comma-separated model ids or Docker Model Runner tags.")
     parser.add_argument("--workloads", default="", help="Optional comma-separated workload names.")
     parser.add_argument("--strict", action="store_true", help="Stop on the first failed model/workload instead of recording an error row.")
     args = parser.parse_args()
@@ -45,7 +45,7 @@ def run_benchmarks(args: argparse.Namespace) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "traces").mkdir(exist_ok=True)
-    client = OllamaClient(args.base_url)
+    client = DockerModelRunnerClient(args.base_url)
     include_embeddings = args.experiment in ("all", "C", "E")
     model_specs = filter_specs(specs_for(args.experiment, include_embeddings=False), args.models)
     embedding_specs = filter_specs(EMBEDDING_MODELS if include_embeddings else [], args.models)
@@ -76,7 +76,7 @@ def run_benchmarks(args: argparse.Namespace) -> None:
                     rows.append(row)
                     append_jsonl(response_path, {"run_id": row["run_id"], "response": row.get("response", ""), "item_id": item.item_id})
                     pd.DataFrame(rows).to_csv(out / "metrics.csv", index=False)
-            client.unload(spec.ollama)
+            client.unload(spec.docker_model_runner)
 
     if not embedding_workload_enabled:
         metrics = pd.DataFrame(rows)
@@ -97,7 +97,7 @@ def run_benchmarks(args: argparse.Namespace) -> None:
                     )
                     rows.append(row)
                     pd.DataFrame(rows).to_csv(out / "metrics.csv", index=False)
-            client.unload(spec.ollama)
+            client.unload(spec.docker_model_runner)
 
     metrics = pd.DataFrame(rows)
     metrics.to_csv(out / "metrics.csv", index=False)
@@ -122,20 +122,20 @@ def filter_specs(specs: Sequence[ModelSpec], requested: str) -> List[ModelSpec]:
     wanted = {item.strip() for item in requested.split(",") if item.strip()}
     if not wanted:
         return list(specs)
-    return [spec for spec in specs if spec.id in wanted or spec.ollama in wanted or spec.family in wanted]
+    return [spec for spec in specs if spec.id in wanted or spec.docker_model_runner in wanted or spec.family in wanted]
 
 
 def ensure_model_available(spec: ModelSpec, out: Path, skip_pull: bool, strict: bool) -> bool:
     try:
         if skip_pull:
-            proc = subprocess.run(["ollama", "show", spec.ollama], capture_output=True, text=True)
+            proc = subprocess.run(["docker", "model", "runner", "show", spec.docker_model_runner], capture_output=True, text=True)
             if proc.returncode != 0:
-                raise RuntimeError(f"{spec.ollama} is not available locally. Pull it first or rerun without --skip-pull.")
+                raise RuntimeError(f"{spec.docker_model_runner} is not available locally. Pull it first or rerun without --skip-pull.")
         else:
-            pull_model(spec.ollama, out)
+            pull_model(spec.docker_model_runner, out)
         return True
     except Exception as exc:
-        append_jsonl(out / "skipped_models.jsonl", {"model_id": spec.id, "ollama_model": spec.ollama, "error": str(exc)})
+        append_jsonl(out / "skipped_models.jsonl", {"model_id": spec.id, "docker_model_runner_model": spec.docker_model_runner, "error": str(exc)})
         if strict:
             raise
         print(f"[skip] {spec.label}: {exc}")
@@ -183,17 +183,17 @@ def safely_run(fn: Any, spec: ModelSpec, workload: str, item_id: str, hw_name: s
         return row
 
 
-def run_generation_item(client: OllamaClient, spec: ModelSpec, item: Any, hw_name: str, profile: Dict[str, Any], repeat: int, out: Path, save_traces: bool) -> Dict[str, Any]:
+def run_generation_item(client: DockerModelRunnerClient, spec: ModelSpec, item: Any, hw_name: str, profile: Dict[str, Any], repeat: int, out: Path, save_traces: bool) -> Dict[str, Any]:
     run_id = f"{int(time.time()*1000)}_{spec.id}_{hw_name}_{item.item_id}_r{repeat}"
-    options = profile["ollama_options"]
+    options = profile["docker_model_runner_options"]
     with EnergyTrace(interval_s=0.1, gpu_indices=profile.get("gpu_indices"), cpu_tdp_watts=profile.get("cpu_tdp_watts")) as energy:
-        data = client.generate(spec.ollama, item.prompt, options=options, max_tokens=item.max_tokens)
+        data = client.generate(spec.docker_model_runner, item.prompt, options=options, max_tokens=item.max_tokens)
     summary = energy.summary()
     if save_traces:
         energy.write_samples(out / "traces" / "power_samples.jsonl", run_id)
     response = data.get("response", "")
     eval_row = evaluate_generation(item, response)
-    parts = latency_parts_ollama(data, data["request_wall_s"])
+    parts = latency_parts_docker_model_runner(data, data["request_wall_s"])
     input_tokens = int(data.get("prompt_eval_count") or 0)
     output_tokens = int(data.get("eval_count") or 0)
     total_tokens = input_tokens + output_tokens
@@ -214,12 +214,12 @@ def run_generation_item(client: OllamaClient, spec: ModelSpec, item: Any, hw_nam
     }
 
 
-def run_embedding_item(client: OllamaClient, spec: ModelSpec, item: Any, hw_name: str, profile: Dict[str, Any], repeat: int, out: Path, save_traces: bool) -> Dict[str, Any]:
+def run_embedding_item(client: DockerModelRunnerClient, spec: ModelSpec, item: Any, hw_name: str, profile: Dict[str, Any], repeat: int, out: Path, save_traces: bool) -> Dict[str, Any]:
     run_id = f"{int(time.time()*1000)}_{spec.id}_{hw_name}_{item.item_id}_r{repeat}"
     docs = item.metadata["corpus"]
     inputs = [item.prompt] + [text for _, text in docs]
     with EnergyTrace(interval_s=0.1, gpu_indices=profile.get("gpu_indices"), cpu_tdp_watts=profile.get("cpu_tdp_watts")) as energy:
-        data = client.embed(spec.ollama, inputs, options=profile["ollama_options"])
+        data = client.embed(spec.docker_model_runner, inputs, options=profile["docker_model_runner_options"])
     summary = energy.summary()
     if save_traces:
         energy.write_samples(out / "traces" / "power_samples.jsonl", run_id)
@@ -257,7 +257,7 @@ def base_row(spec: ModelSpec, workload: str, item_id: str, hw_name: str, profile
         "experiment_tags": ",".join(spec.experiments),
         "model_id": spec.id,
         "model_label": spec.label,
-        "ollama_model": spec.ollama,
+        "docker_model_runner_model": spec.docker_model_runner,
         "family": spec.family,
         "architecture": spec.architecture,
         "params_b": spec.params_b,
@@ -294,10 +294,10 @@ def estimate_cost(elapsed_s: float, energy_j: Optional[float], hw_name: str) -> 
 def pull_model(model: str, out: Path) -> None:
     log = out / "pull_log.txt"
     started = time.time()
-    proc = subprocess.run(["ollama", "pull", model], capture_output=True, text=True)
+    proc = subprocess.run(["docker", "model", "runner", "pull", model], capture_output=True, text=True)
     append_jsonl(log, {"model": model, "returncode": proc.returncode, "seconds": time.time() - started, "stdout_tail": proc.stdout[-1000:], "stderr_tail": proc.stderr[-1000:]})
     if proc.returncode != 0:
-        raise RuntimeError(f"ollama pull failed for {model}: {proc.stderr[-500:]}")
+        raise RuntimeError(f"docker model runner pull failed for {model}: {proc.stderr[-500:]}")
 
 
 def append_jsonl(path: Path, row: Dict[str, Any]) -> None:

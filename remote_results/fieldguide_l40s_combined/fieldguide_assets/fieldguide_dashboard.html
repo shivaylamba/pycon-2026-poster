@@ -190,7 +190,7 @@
         <div class="panel" style="margin-top:18px">
           <h3>Energy Attribution Correction</h3>
           <p><strong>CPU energy in this VM is not a measured value.</strong> Rows marked <code>cpu:tdp_estimate</code> are utilization/TDP estimates. They remain in the CSV for transparency, but measured-energy charts exclude them unless a future run has <code>cpu:rapl</code>.</p>
-          <p><strong>Cold model-load rows are separated.</strong> Raw CSVs keep first-load requests; the poster learning charts use steady-state rows where <code>load_s &lt;= 2s</code> so a one-time Ollama load does not become a model-size claim.</p>
+          <p><strong>Cold model-load rows are separated.</strong> Raw CSVs keep first-load requests; the poster learning charts use steady-state rows where <code>load_s &lt;= 2s</code> so a one-time Docker Model Runner load does not become a model-size claim.</p>
         </div>
       </section>
 
@@ -260,7 +260,7 @@
         <article class="chart-card wide">
           <div class="chart-topline"><span>same architecture</span></div>
           <h3>Learning 1: Bigger models have diminishing returns</h3>
-          <p class="takeaway">Same-family size comparisons use steady-state GPU rows so cold Ollama load does not distort the model-size story.</p>
+          <p class="takeaway">Same-family size comparisons use steady-state GPU rows so cold Docker Model Runner load does not distort the model-size story.</p>
           <figure><img src="learning1_scaling_tradeoffs.png" alt="Learning 1: Bigger models have diminishing returns"></figure>
           <p class="how">Read each family line left-to-right; lower GPU energy/latency/VRAM is better, higher toy score is better.</p>
         </article>

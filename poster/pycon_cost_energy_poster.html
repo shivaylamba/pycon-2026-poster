@@ -618,7 +618,7 @@
         <p>Each workload produces a row-level <code>metrics.csv</code>, response log, summary CSV, and poster-ready waterfall, cost, and energy figures.</p>
         <div class="flow">
           <div class="flow-step"><b>Fixtures</b><span>prompts, docs, labels, corpus</span></div>
-          <div class="flow-step"><b>Client</b><span>Ollama / API adapter</span></div>
+          <div class="flow-step"><b>Client</b><span>Docker Model Runner / API adapter</span></div>
           <div class="flow-step"><b>Timers</b><span>network, tokenize, infer, post</span></div>
           <div class="flow-step"><b>Energy</b><span>NVML + CPU estimate</span></div>
           <div class="flow-step"><b>Plots</b><span>waterfalls, cost, energy</span></div>
@@ -650,7 +650,7 @@
           <span class="pill">bge-m3</span>
         </div>
         <p class="note">
-          Llama 4 Scout was skipped for this A100 run because the official Ollama tag is about 67GB, too large for a clean full-GPU comparison on the 40GB A100.
+          Llama 4 Scout was skipped for this A100 run because the official Docker Model Runner tag is about 67GB, too large for a clean full-GPU comparison on the 40GB A100.
         </p>
       </div>
 
@@ -664,7 +664,7 @@ python scripts/run_benchmark.py \
 python scripts/make_plots.py \
   --metrics results/a100_run/metrics.csv</div>
         <p class="note" style="margin-top:6px;">
-          Familiar tools only: <code>pandas</code>, <code>numpy</code>, <code>matplotlib</code>, Ollama/OpenAI-compatible clients, and NVIDIA NVML when a GPU is present. The open repo includes notebooks for editing workloads, models, and endpoints.
+          Familiar tools only: <code>pandas</code>, <code>numpy</code>, <code>matplotlib</code>, Docker Model Runner/OpenAI-compatible clients, and NVIDIA NVML when a GPU is present. The open repo includes notebooks for editing workloads, models, and endpoints.
         </p>
       </div>
     </div>

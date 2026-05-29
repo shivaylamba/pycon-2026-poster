@@ -1,4 +1,4 @@
-run_id: pycon_ollama_vm
+run_id: pycon_docker_model_runner_vm
 data_dir: ../data
 repeats: 3
 workloads:
@@ -19,8 +19,8 @@ default_options:
   num_predict: 192
 
 providers:
-  ollama_local:
-    type: ollama
+  docker_model_runner_local:
+    type: docker_model_runner
     base_url: http://localhost:11434
     timeout_s: 900
 
@@ -30,43 +30,43 @@ hardware_profiles:
     label: CPU / num_gpu=0
     cpu_tdp_watts:
     provider_options:
-      ollama:
+      docker_model_runner:
         num_gpu: 0
         num_thread: 8
   gpu:
     enabled: true
-    label: GPU / Ollama auto
+    label: GPU / Docker Model Runner auto
     gpu_indices: [0]
     cpu_tdp_watts:
     provider_options:
-      ollama: {}
+      docker_model_runner: {}
 
 generation_models:
   - name: llama3.2:1b
     label: Llama 3.2 1B
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: llama
     size: 1B
   - name: qwen2.5:3b
     label: Qwen 2.5 3B
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: qwen
     size: 3B
   - name: mistral:7b-instruct-v0.3
     label: Mistral 7B
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: mistral
     size: 7B
 
 embedding_models:
   - name: nomic-embed-text
     label: Nomic Embed Text
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: nomic
     size: small
   - name: mxbai-embed-large
     label: MXBAI Embed Large
-    provider: ollama_local
+    provider: docker_model_runner_local
     family: mxbai
     size: large
 
